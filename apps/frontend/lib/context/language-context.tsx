@@ -36,12 +36,16 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         const cachedUiLang = localStorage.getItem(UI_STORAGE_KEY);
         if (cachedUiLang && locales.includes(cachedUiLang as Locale)) {
           setUiLanguageState(cachedUiLang as Locale);
+        } else if (cachedUiLang) {
+          localStorage.setItem(UI_STORAGE_KEY, defaultLocale);
         }
 
         // Try localStorage first for content language
         const cachedContentLang = localStorage.getItem(CONTENT_STORAGE_KEY);
         if (cachedContentLang && locales.includes(cachedContentLang as Locale)) {
           setContentLanguageState(cachedContentLang as SupportedLanguage);
+        } else if (cachedContentLang) {
+          localStorage.setItem(CONTENT_STORAGE_KEY, defaultLocale);
         }
 
         // Then fetch content language from backend to ensure sync

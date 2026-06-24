@@ -364,7 +364,7 @@ const AdditionalSection: React.FC<{
   additional: ResumeData['additional'];
   displayName?: string;
   labels?: Partial<AdditionalSectionLabels>;
-}> = ({ additional, displayName = 'Skills & Awards', labels }) => {
+}> = ({ additional, displayName = '技能与荣誉', labels }) => {
   if (!additional) return null;
 
   const {
@@ -382,10 +382,10 @@ const AdditionalSection: React.FC<{
   const awards = rawAwards.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
 
   const mergedLabels: AdditionalSectionLabels = {
-    technicalSkills: labels?.technicalSkills ?? 'Technical Skills:',
-    languages: labels?.languages ?? 'Languages:',
-    certifications: labels?.certifications ?? 'Certifications:',
-    awards: labels?.awards ?? 'Awards:',
+    technicalSkills: labels?.technicalSkills ?? '技术技能：',
+    languages: labels?.languages ?? '语言：',
+    certifications: labels?.certifications ?? '证书：',
+    awards: labels?.awards ?? '奖项：',
   };
 
   const hasContent =

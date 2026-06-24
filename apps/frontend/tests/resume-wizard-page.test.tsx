@@ -5,6 +5,7 @@ import {
   createInitialResumeWizardState,
   finalizeResumeWizard,
   postResumeWizardTurn,
+  SECTION_QUESTIONS,
   type ResumeWizardState,
 } from '@/lib/api';
 
@@ -37,7 +38,7 @@ describe('ResumeWizardPage', () => {
 
   it('renders the intro question and answer textbox', () => {
     render(<ResumeWizardPage />);
-    expect(screen.getByText(/Hi — I'll help you build your master resume/)).toBeInTheDocument();
+    expect(screen.getByText(/你好，我会帮你一步步建立主简历/)).toBeInTheDocument();
     expect(screen.getByRole('textbox')).toBeInTheDocument();
   });
 
@@ -65,7 +66,7 @@ describe('ResumeWizardPage', () => {
         answer: { text: "I'm James." },
       });
     });
-    expect(await screen.findByText('Where have you worked?')).toBeInTheDocument();
+    expect(await screen.findByText(SECTION_QUESTIONS.workExperience)).toBeInTheDocument();
     expect(screen.getByText('James')).toBeInTheDocument();
   });
 
@@ -161,7 +162,7 @@ describe('ResumeWizardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'resumeWizard.actions.continue' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('resumeWizard.errors.turnFailed');
-    expect(screen.getByText('Skills?')).toBeInTheDocument();
+    expect(screen.getByText(SECTION_QUESTIONS.skills)).toBeInTheDocument();
   });
 
   it('recovers from a corrupt saved draft without crashing the render', async () => {
@@ -179,8 +180,28 @@ describe('ResumeWizardPage', () => {
 
     render(<ResumeWizardPage />);
 
-    expect(await screen.findByText('Recovered question?')).toBeInTheDocument();
+    expect(await screen.findByText(SECTION_QUESTIONS.skills)).toBeInTheDocument();
     expect(screen.getByText('James')).toBeInTheDocument(); // preview rendered, no crash
+  });
+
+  it('localizes old English draft questions on restore', async () => {
+    localStorage.setItem(
+      'resume_wizard_draft',
+      JSON.stringify({
+        step: 'intro',
+        current_question: {
+          text: "Hi — I'll help you build your master resume. What's your name?",
+          section: 'intro',
+        },
+        resume_data: { personalInfo: { name: '' } },
+        asked_count: 0,
+      })
+    );
+
+    render(<ResumeWizardPage />);
+
+    expect(await screen.findByText(/你好，我会帮你一步步建立主简历/)).toBeInTheDocument();
+    expect(screen.queryByText(/master resume/i)).not.toBeInTheDocument();
   });
 
   it('recovers from a draft with non-string personalInfo fields', async () => {
@@ -202,7 +223,7 @@ describe('ResumeWizardPage', () => {
     render(<ResumeWizardPage />);
 
     // No crash: the question renders and the (coerced) experience shows in the preview.
-    expect(await screen.findByText('Recovered q2?')).toBeInTheDocument();
+    expect(await screen.findByText(SECTION_QUESTIONS.skills)).toBeInTheDocument();
     expect(screen.getByText(/Engineer/)).toBeInTheDocument();
   });
 
@@ -231,7 +252,7 @@ describe('ResumeWizardPage', () => {
     await waitFor(() => {
       expect(mockedPostTurn).toHaveBeenCalledWith(expect.objectContaining({ action: 'skip' }));
     });
-    expect(await screen.findByText('Next?')).toBeInTheDocument();
+    expect(await screen.findByText(SECTION_QUESTIONS.education)).toBeInTheDocument();
   });
 
   it('dispatches a back turn when history exists', async () => {

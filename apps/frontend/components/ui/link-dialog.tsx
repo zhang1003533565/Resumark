@@ -130,20 +130,20 @@ export const LinkDialog: React.FC<LinkDialogProps> = ({ editor, onClose }) => {
 
           {/* Title */}
           <h3 className="font-mono text-xs uppercase tracking-wider mb-4 text-ink-soft">
-            [ {hasExistingLink ? 'EDIT LINK' : 'ADD LINK'} ]
+            [ {hasExistingLink ? '编辑链接' : '添加链接'} ]
           </h3>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Display Text */}
             <div className="space-y-2">
               <Label htmlFor="link-text" className="font-mono text-xs uppercase tracking-wider">
-                Display Text
+                显示文字
               </Label>
               <Input
                 id="link-text"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Link text"
+                placeholder="链接文字"
                 className="rounded-none border-black bg-white"
                 autoFocus
               />
@@ -167,14 +167,14 @@ export const LinkDialog: React.FC<LinkDialogProps> = ({ editor, onClose }) => {
             <div className="flex gap-2 justify-end pt-2">
               {hasExistingLink && (
                 <Button type="button" variant="destructive" size="sm" onClick={handleRemoveLink}>
-                  Remove Link
+                  移除链接
                 </Button>
               )}
               <Button type="button" variant="outline" size="sm" onClick={onClose}>
-                Cancel
+                取消
               </Button>
               <Button type="submit" variant="default" size="sm">
-                {hasExistingLink ? 'Update' : 'Add'} Link
+                {hasExistingLink ? '更新链接' : '添加链接'}
               </Button>
             </div>
           </form>

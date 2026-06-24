@@ -35,6 +35,7 @@ export {
   createInitialResumeWizardState,
   finalizeResumeWizard,
   postResumeWizardTurn,
+  SECTION_QUESTIONS,
   type ResumeWizardAction,
   type ResumeWizardFinalizeResponse,
   type ResumeWizardSection,

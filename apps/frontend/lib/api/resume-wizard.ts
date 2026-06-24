@@ -63,7 +63,19 @@ export interface ResumeWizardFinalizeResponse {
 }
 
 export const INTRO_QUESTION =
-  "Hi — I'll help you build your master resume. What's your name, and what kind of role are you going for?";
+  '你好，我会帮你一步步建立主简历。先告诉我你的姓名，以及你想投递或发展的职位方向。';
+
+export const SECTION_QUESTIONS: Record<ResumeWizardSection, string> = {
+  intro: INTRO_QUESTION,
+  contact: '你希望简历里放哪些联系方式？可以写邮箱、电话、城市、LinkedIn、GitHub 或个人网站。',
+  summary: '用一两句话描述你的职业定位、优势或目标方向。',
+  workExperience: '请介绍一段工作经历：职位、公司、时间、你负责什么，以及有什么可量化成果。',
+  internships: '请介绍一段实习经历：职位、公司、时间、你做了什么，以及带来了什么结果。',
+  education: '请介绍你的教育背景：学校、专业/学位、时间，以及荣誉、课程或亮点。',
+  personalProjects: '请介绍一个项目：你做了什么、为什么重要、用了哪些技术，以及最终结果。',
+  skills: '你希望简历里展示哪些工具、技术或能力？',
+  review: '我们先检查现有内容，再创建你的主简历。',
+};
 
 function emptyResumeData(): ResumeData {
   return {

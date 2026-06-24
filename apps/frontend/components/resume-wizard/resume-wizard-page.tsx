@@ -9,6 +9,7 @@ import {
   createInitialResumeWizardState,
   finalizeResumeWizard,
   postResumeWizardTurn,
+  SECTION_QUESTIONS,
   type ResumeWizardSection,
   type ResumeWizardState,
 } from '@/lib/api';
@@ -111,6 +112,54 @@ function firstGapSection(data: ResumeWizardState['resume_data']): ResumeWizardSe
   return 'skills';
 }
 
+function normalizeQuestionSection(
+  section: unknown,
+  fallback: ResumeWizardSection
+): ResumeWizardSection {
+  return WIZARD_SECTIONS.includes(section as ResumeWizardSection)
+    ? (section as ResumeWizardSection)
+    : fallback;
+}
+
+function isLikelyEnglishQuestion(text: string): boolean {
+  const value = text.trim();
+  if (!value) return false;
+  return /[A-Za-z]/.test(value) && !/[\u4e00-\u9fff]/.test(value);
+}
+
+function normalizeQuestionText(text: unknown, section: ResumeWizardSection): string {
+  if (typeof text !== 'string' || !text.trim()) {
+    return SECTION_QUESTIONS[section];
+  }
+  if (isLikelyEnglishQuestion(text)) {
+    return SECTION_QUESTIONS[section];
+  }
+  return text;
+}
+
+function normalizeStateQuestions(state: ResumeWizardState): ResumeWizardState {
+  const section = normalizeQuestionSection(
+    state.current_question?.section,
+    state.step === 'intro' ? 'intro' : 'skills'
+  );
+  return {
+    ...state,
+    current_question: {
+      ...state.current_question,
+      section,
+      text: normalizeQuestionText(state.current_question?.text, section),
+    },
+    history: state.history.map((item) => {
+      const itemSection = normalizeQuestionSection(item.section, section);
+      return {
+        ...item,
+        section: itemSection,
+        question: normalizeQuestionText(item.question, itemSection),
+      };
+    }),
+  };
+}
+
 /** Validate a saved draft against the current shape; fall back to a fresh state. */
 function readSavedDraft(): ResumeWizardState | null {
   try {
@@ -124,9 +173,7 @@ function readSavedDraft(): ResumeWizardState | null {
       ? (parsed.step as ResumeWizardState['step'])
       : initial.step;
     const question = isRecord(parsed.current_question) ? parsed.current_question : {};
-    const section = WIZARD_SECTIONS.includes(question.section as ResumeWizardSection)
-      ? (question.section as ResumeWizardSection)
-      : initial.current_question.section;
+    const section = normalizeQuestionSection(question.section, initial.current_question.section);
 
     return {
       ...initial,
@@ -134,14 +181,18 @@ function readSavedDraft(): ResumeWizardState | null {
       step,
       resume_data: normalizeDraftResumeData(parsed.resume_data, initial.resume_data),
       current_question: {
-        text:
-          typeof question.text === 'string' && question.text.trim()
-            ? question.text
-            : initial.current_question.text,
+        text: normalizeQuestionText(question.text, section),
         section,
       },
       history: Array.isArray(parsed.history)
-        ? (parsed.history as ResumeWizardState['history'])
+        ? (parsed.history as ResumeWizardState['history']).map((item) => {
+            const itemSection = normalizeQuestionSection(item.section, section);
+            return {
+              ...item,
+              section: itemSection,
+              question: normalizeQuestionText(item.question, itemSection),
+            };
+          })
         : [],
       asked_count: typeof parsed.asked_count === 'number' ? parsed.asked_count : 0,
       inferred_skills: Array.isArray(parsed.inferred_skills)
@@ -210,7 +261,7 @@ export function ResumeWizardPage() {
         action,
         ...(withAnswer ? { answer: { text: answer.trim() } } : {}),
       });
-      setState(response.state);
+      setState(normalizeStateQuestions(response.state));
       setAnswer('');
     } catch {
       setErrorKey(errorTranslationKey);
@@ -227,16 +278,19 @@ export function ResumeWizardPage() {
   const handleBack = () => void runTurn('back', 'resumeWizard.errors.turnFailed', false);
   const handleReview = () => void runTurn('review', 'resumeWizard.errors.turnFailed', false);
   const handleKeepAdding = () =>
-    setState((current) => ({
-      ...current,
-      step: 'question',
-      // Target the next content gap so the answer actually merges — the `review`
-      // section is a no-op in the backend merge and would silently drop the answer.
-      current_question: {
-        text: t('resumeWizard.keepAddingPrompt'),
-        section: firstGapSection(current.resume_data),
-      },
-    }));
+    setState((current) => {
+      const section = firstGapSection(current.resume_data);
+      return {
+        ...current,
+        step: 'question',
+        // Target the next content gap so the answer actually merges — the `review`
+        // section is a no-op in the backend merge and would silently drop the answer.
+        current_question: {
+          section,
+          text: SECTION_QUESTIONS[section],
+        },
+      };
+    });
 
   const handleFinalize = async () => {
     setErrorKey(null);

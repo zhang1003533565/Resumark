@@ -45,7 +45,7 @@ export const DraggableSectionWrapper: React.FC<DraggableSectionWrapperProps> = (
           {...attributes}
           {...listeners}
           className="absolute left-0 top-0 h-full w-4 flex items-start justify-center cursor-grab active:cursor-grabbing z-10"
-          title="Drag to reorder"
+          title="拖拽排序"
         >
           <GripVertical className="w-4 h-4 text-steel-grey hover:text-ink-soft transition-colors" />
         </div>

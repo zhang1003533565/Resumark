@@ -54,10 +54,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     const strings: ErrorBoundaryStrings = this.props.strings ?? {
-      title: 'Something Went Wrong',
-      description: 'An unexpected error occurred. This has been logged for review.',
-      tryAgain: 'Try Again',
-      reloadPage: 'Reload Page',
+      title: '出现问题',
+      description: '发生了意外错误。错误信息已记录，便于后续排查。',
+      tryAgain: '重试',
+      reloadPage: '刷新页面',
     };
 
     if (this.state.hasError) {

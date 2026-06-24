@@ -12,7 +12,7 @@ LANGUAGE_NAMES = {
 
 def get_language_name(code: str) -> str:
     """Get full language name from code."""
-    return LANGUAGE_NAMES.get(code, "English")
+    return LANGUAGE_NAMES.get(code, "Chinese (Simplified)")
 
 
 # Schema with example values - used for prompts to show LLM expected format

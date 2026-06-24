@@ -33,7 +33,7 @@ interface RichTextEditorProps {
 export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
   onChange,
-  placeholder = 'Enter text...',
+  placeholder = '请输入文字...',
   className,
   minHeight = '60px',
 }) => {

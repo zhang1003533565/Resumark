@@ -249,7 +249,15 @@ async def update_feature_config(request: FeatureConfigRequest) -> FeatureConfigR
 
 
 # Supported languages for i18n
-SUPPORTED_LANGUAGES = ["en", "es", "zh", "ja", "pt"]
+DEFAULT_LANGUAGE = "zh"
+SUPPORTED_LANGUAGES = [DEFAULT_LANGUAGE]
+
+
+def _normalize_language(value: str | None) -> str:
+    """Keep the app Chinese-only, including existing legacy config values."""
+    if value in SUPPORTED_LANGUAGES:
+        return value
+    return DEFAULT_LANGUAGE
 
 
 @router.get("/language", response_model=LanguageConfigResponse)
@@ -258,11 +266,11 @@ async def get_language_config() -> LanguageConfigResponse:
     stored = _load_config()
 
     # Support legacy single 'language' field migration
-    legacy_language = stored.get("language", "en")
+    legacy_language = _normalize_language(stored.get("language"))
 
     return LanguageConfigResponse(
-        ui_language=stored.get("ui_language", legacy_language),
-        content_language=stored.get("content_language", legacy_language),
+        ui_language=_normalize_language(stored.get("ui_language", legacy_language)),
+        content_language=_normalize_language(stored.get("content_language", legacy_language)),
         supported_languages=SUPPORTED_LANGUAGES,
     )
 
@@ -296,11 +304,11 @@ async def update_language_config(
     _save_config(stored)
 
     # Support legacy single 'language' field migration
-    legacy_language = stored.get("language", "en")
+    legacy_language = _normalize_language(stored.get("language"))
 
     return LanguageConfigResponse(
-        ui_language=stored.get("ui_language", legacy_language),
-        content_language=stored.get("content_language", legacy_language),
+        ui_language=_normalize_language(stored.get("ui_language", legacy_language)),
+        content_language=_normalize_language(stored.get("content_language", legacy_language)),
         supported_languages=SUPPORTED_LANGUAGES,
     )
 

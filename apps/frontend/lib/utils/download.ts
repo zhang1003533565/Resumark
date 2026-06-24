@@ -71,7 +71,7 @@ export function buildResumeFilename(
   fallbackId: string,
   type: 'resume' | 'cover-letter' = 'resume'
 ): string {
-  const typeLabel = type === 'resume' ? 'Resume' : 'Cover Letter';
+  const typeLabel = type === 'resume' ? '简历' : '求职信';
   const cleanName = name?.trim() || null;
   const cleanCompany = company?.trim() || null;
 

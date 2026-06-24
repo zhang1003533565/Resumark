@@ -24,23 +24,23 @@ function firstStringLeaf(
   return null;
 }
 
-const leaf = firstStringLeaf(getMessages('en') as unknown as Record<string, unknown>, '')!;
+const leaf = firstStringLeaf(getMessages('zh') as unknown as Record<string, unknown>, '')!;
 
 describe('translate (server-side)', () => {
   it('resolves a real key in the requested locale', () => {
-    expect(translate('en', leaf.path)).toBe(leaf.value);
+    expect(translate('zh', leaf.path)).toBe(leaf.value);
   });
 
   it('returns the key itself when missing', () => {
-    expect(translate('en', 'totally.missing.key')).toBe('totally.missing.key');
+    expect(translate('zh', 'totally.missing.key')).toBe('totally.missing.key');
   });
 
-  it('falls back to en for an unknown locale', () => {
-    expect(translate('xx' as unknown as Locale, leaf.path)).toBe(translate('en', leaf.path));
+  it('falls back to zh for an unknown locale', () => {
+    expect(translate('xx' as unknown as Locale, leaf.path)).toBe(translate('zh', leaf.path));
   });
 
   it('composes lookup + param substitution (missing path still gets params applied)', () => {
     // getNestedValue returns the raw path 'nope.{n}', then applyParams fills {n}.
-    expect(translate('en', 'nope.{n}', { n: 5 })).toBe('nope.5');
+    expect(translate('zh', 'nope.{n}', { n: 5 })).toBe('nope.5');
   });
 });

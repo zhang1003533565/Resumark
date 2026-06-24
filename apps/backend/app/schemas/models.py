@@ -607,9 +607,9 @@ class LanguageConfigRequest(BaseModel):
 class LanguageConfigResponse(BaseModel):
     """Response for language settings."""
 
-    ui_language: str = "en"  # Interface language
-    content_language: str = "en"  # Generated content language
-    supported_languages: list[str] = ["en", "es", "zh", "ja"]
+    ui_language: str = "zh"  # Interface language
+    content_language: str = "zh"  # Generated content language
+    supported_languages: list[str] = ["zh"]
 
 
 class PromptOption(BaseModel):

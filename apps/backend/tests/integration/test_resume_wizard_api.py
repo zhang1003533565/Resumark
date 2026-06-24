@@ -28,7 +28,7 @@ _AI_RESULT = {
         "sectionMeta": [],
         "customSections": {},
     },
-    "next_question": {"text": "What tools do you use most?", "section": "skills"},
+    "next_question": {"text": "你最常用哪些工具？", "section": "skills"},
     "inferred_skills": ["FastAPI"],
     "is_complete": False,
 }
@@ -57,7 +57,7 @@ async def test_turn_answer_runs_ai_and_returns_next_question(isolated_db) -> Non
 
     assert response.status_code == 200
     payload = response.json()["state"]
-    assert payload["current_question"]["text"] == "What tools do you use most?"
+    assert payload["current_question"]["text"] == "你最常用哪些工具？"
     assert payload["resume_data"]["additional"]["technicalSkills"] == ["Python", "FastAPI"]
     assert payload["asked_count"] == 1
 
@@ -136,7 +136,7 @@ async def test_finalize_rejects_when_master_exists(isolated_db, sample_resume) -
         )
 
     assert response.status_code == 409
-    assert "already exists" in response.json()["detail"].lower()
+    assert "已存在主简历" in response.json()["detail"]
 
 
 async def test_turn_start_returns_initial_state(isolated_db) -> None:

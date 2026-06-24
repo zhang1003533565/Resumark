@@ -21,28 +21,28 @@ export const RichTextToolbar: React.FC<RichTextToolbarProps> = ({ editor, onLink
   const tools = [
     {
       icon: Bold,
-      label: 'Bold',
+      label: '加粗',
       action: () => editor.chain().focus().toggleBold().run(),
       isActive: editor.isActive('bold'),
       shortcut: 'Ctrl+B',
     },
     {
       icon: Italic,
-      label: 'Italic',
+      label: '斜体',
       action: () => editor.chain().focus().toggleItalic().run(),
       isActive: editor.isActive('italic'),
       shortcut: 'Ctrl+I',
     },
     {
       icon: Underline,
-      label: 'Underline',
+      label: '下划线',
       action: () => editor.chain().focus().toggleUnderline().run(),
       isActive: editor.isActive('underline'),
       shortcut: 'Ctrl+U',
     },
     {
       icon: Link,
-      label: 'Link',
+      label: '链接',
       action: onLinkClick,
       isActive: editor.isActive('link'),
       shortcut: 'Ctrl+K',

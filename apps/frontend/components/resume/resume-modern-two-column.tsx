@@ -53,18 +53,18 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
   const allSections = getSectionMeta(data);
 
   const headingFallbacks: ResumeSectionHeadings = {
-    summary: sectionHeadings?.summary ?? 'Summary',
-    experience: sectionHeadings?.experience ?? 'Experience',
-    education: sectionHeadings?.education ?? 'Education',
-    projects: sectionHeadings?.projects ?? 'Projects',
-    certifications: sectionHeadings?.certifications ?? 'Training & Certifications',
-    skills: sectionHeadings?.skills ?? 'Skills',
-    languages: sectionHeadings?.languages ?? 'Languages',
-    awards: sectionHeadings?.awards ?? 'Awards',
-    links: sectionHeadings?.links ?? 'Links',
+    summary: sectionHeadings?.summary ?? '职业概述',
+    experience: sectionHeadings?.experience ?? '工作经历',
+    education: sectionHeadings?.education ?? '教育经历',
+    projects: sectionHeadings?.projects ?? '项目经历',
+    certifications: sectionHeadings?.certifications ?? '培训与证书',
+    skills: sectionHeadings?.skills ?? '技能',
+    languages: sectionHeadings?.languages ?? '语言',
+    awards: sectionHeadings?.awards ?? '奖项',
+    links: sectionHeadings?.links ?? '链接',
   };
 
-  const nameFallback = fallbackLabels?.name ?? 'Your Name';
+  const nameFallback = fallbackLabels?.name ?? '你的姓名';
 
   // Get section display name from metadata
   const getSectionDisplayName = (sectionKey: string, fallback: string): string => {

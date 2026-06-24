@@ -24,7 +24,7 @@ from app.services.resume_wizard import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/resume-wizard", tags=["Resume Wizard"])
+router = APIRouter(prefix="/resume-wizard", tags=["简历向导"])
 
 
 @router.post("/turn", response_model=ResumeWizardTurnResponse)
@@ -57,12 +57,12 @@ async def resume_wizard_turn(
         raise
     except ValueError as e:
         logger.error("Resume wizard turn validation failed: %s", e)
-        raise HTTPException(status_code=422, detail="Could not update the resume draft.")
+        raise HTTPException(status_code=422, detail="无法更新简历草稿。")
     except Exception as e:
         logger.error("Resume wizard turn failed: %s", e)
         raise HTTPException(
             status_code=500,
-            detail="Resume wizard failed. Please try again.",
+            detail="简历向导暂时无法继续，请重试。",
         )
 
 
@@ -76,7 +76,7 @@ async def finalize_resume_wizard(
         if current_master and current_master.get("processing_status") == "ready":
             raise HTTPException(
                 status_code=409,
-                detail="A master resume already exists. Delete it before creating a new one.",
+                detail="已存在主简历。请先删除现有主简历，再创建新的主简历。",
             )
 
         normalized = normalize_resume_data(
@@ -84,14 +84,14 @@ async def finalize_resume_wizard(
         )
         data = ResumeData.model_validate(normalized).model_dump(mode="json")
         content = json.dumps(data, ensure_ascii=False, sort_keys=True)
-        name = data.get("personalInfo", {}).get("name", "").strip() or "Resume"
-        title = f"{name} Master Resume"
+        name = data.get("personalInfo", {}).get("name", "").strip() or "简历"
+        title = f"{name} 的主简历"
         # Set the title in the atomic create so a separate update can't fail and
         # leave a committed-but-untitled master behind (which would 409 on retry).
         resume = await db.create_resume_atomic_master(
             content=content,
             content_type="json",
-            filename=f"AI Resume Wizard - {name}.json",
+            filename=f"AI 简历向导 - {name}.json",
             processed_data=data,
             processing_status="ready",
             title=title,
@@ -107,10 +107,10 @@ async def finalize_resume_wizard(
                 )
             raise HTTPException(
                 status_code=409,
-                detail="A master resume already exists. Delete it before creating a new one.",
+                detail="已存在主简历。请先删除现有主简历，再创建新的主简历。",
             )
         return ResumeWizardFinalizeResponse(
-            message="Master resume created.",
+            message="主简历已创建。",
             request_id=str(uuid4()),
             resume_id=resume["resume_id"],
             processing_status="ready",
@@ -120,4 +120,4 @@ async def finalize_resume_wizard(
         raise
     except Exception as e:
         logger.error("Resume wizard finalize failed: %s", e)
-        raise HTTPException(status_code=500, detail="Could not create master resume.")
+        raise HTTPException(status_code=500, detail="无法创建主简历。")

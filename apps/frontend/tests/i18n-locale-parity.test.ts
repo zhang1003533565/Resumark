@@ -1,19 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import en from '@/messages/en.json';
-import es from '@/messages/es.json';
 import zh from '@/messages/zh.json';
-import ja from '@/messages/ja.json';
-import pt from '@/messages/pt-BR.json';
 
 import { getMessages } from '@/lib/i18n/messages';
 import { locales, type Locale } from '@/i18n/config';
 
 /**
- * `lib/i18n/messages.ts` declares `type Messages = typeof en` and
- * `Record<Locale, Messages>`, so every locale JSON must structurally match
- * en.json — a *missing* key makes `tsc` / `next build` fail. That exact drift
- * once shipped to main and only surfaced post-merge in the Docker build.
+ * `lib/i18n/messages.ts` declares `type Messages = typeof zh` and
+ * `Record<Locale, Messages>`, so every active locale JSON must structurally
+ * match zh.json — a *missing* key makes `tsc` / `next build` fail.
  *
  * This catches it in-suite (and mirrors scripts/check_locale_parity.py, which
  * the pre-push hook runs without Node).
@@ -40,11 +35,11 @@ function keyKinds(obj: unknown, prefix = '', out: Map<string, string> = new Map(
   return out;
 }
 
-const REFERENCE = keyKinds(en);
-const LOCALES: Record<string, unknown> = { es, zh, ja, pt };
+const REFERENCE = keyKinds(zh);
+const LOCALES: Record<string, unknown> = { zh };
 
 describe('i18n locale parity (guards the next build break)', () => {
-  it.each(Object.keys(LOCALES))('%s.json has every en.json key with a matching shape', (name) => {
+  it.each(Object.keys(LOCALES))('%s.json has every zh.json key with a matching shape', (name) => {
     const localeKinds = keyKinds(LOCALES[name]);
     const missing = [...REFERENCE.keys()].filter((k) => !localeKinds.has(k));
     const extra = [...localeKinds.keys()].filter((k) => !REFERENCE.has(k));
@@ -59,14 +54,14 @@ describe('i18n locale parity (guards the next build break)', () => {
     // en-derived type, so they are NON-FATAL — surfaced as a warning, never a
     // failure, to stay in lock-step with scripts/check_locale_parity.py (which
     // reports extras as `⚠ (non-fatal)`). See that script's module docstring.
-    expect(missing, `${name}.json is MISSING keys present in en.json`).toEqual([]);
-    expect(mismatched, `${name}.json has keys whose SHAPE differs from en.json`).toEqual([]);
+    expect(missing, `${name}.json is MISSING keys present in zh.json`).toEqual([]);
+    expect(mismatched, `${name}.json has keys whose SHAPE differs from zh.json`).toEqual([]);
     if (extra.length > 0) {
-      console.warn(`locale-parity: ${name}.json has extra keys not in en.json (non-fatal): ${extra.join(', ')}`);
+      console.warn(`locale-parity: ${name}.json has extra keys not in zh.json (non-fatal): ${extra.join(', ')}`);
     }
   });
 
-  it('reference (en.json) has a non-trivial number of keys', () => {
+  it('reference (zh.json) has a non-trivial number of keys', () => {
     // Guards against the check silently passing on an empty/garbled reference.
     expect(REFERENCE.size).toBeGreaterThan(20);
   });
@@ -92,7 +87,7 @@ describe('getMessages', () => {
     }
   });
 
-  it('falls back to en for an unknown locale', () => {
-    expect(getMessages('xx' as unknown as Locale)).toBe(getMessages('en'));
+  it('falls back to zh for an unknown locale', () => {
+    expect(getMessages('xx' as unknown as Locale)).toBe(getMessages('zh'));
   });
 });

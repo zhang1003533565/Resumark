@@ -75,7 +75,7 @@ def test_build_initial_state_has_intro_question() -> None:
     state = build_initial_wizard_state()
     assert state.step == "intro"
     assert state.current_question.section == "intro"
-    assert state.current_question.text.startswith("Hi")
+    assert state.current_question.text.startswith("你好")
 
 
 def test_extract_intro_name_from_conversational_answer() -> None:
@@ -93,8 +93,8 @@ def test_merge_unique_skills_dedupes_case_insensitively_and_keeps_order() -> Non
 
 
 def test_section_prompt_falls_back_for_unknown_section() -> None:
-    assert section_prompt("workExperience").lower().startswith("tell me about one role")
-    assert section_prompt("totally-unknown") == "What would you like to add next?"
+    assert section_prompt("workExperience").startswith("请介绍一段工作经历")
+    assert section_prompt("totally-unknown") == "你还想补充哪些内容？"
 
 
 def test_compute_progress_grows_with_questions_and_caps() -> None:
@@ -113,17 +113,17 @@ def test_review_warnings_identify_thin_resume() -> None:
     data = ResumeData()
     data.personalInfo.name = "James"
     warnings = build_review_warnings(data)
-    assert any("contact" in w.lower() for w in warnings)
-    assert any("experience" in w.lower() for w in warnings)
-    assert any("skills" in w.lower() for w in warnings)
+    assert any("联系方式" in w for w in warnings)
+    assert any("经历" in w for w in warnings)
+    assert any("技能" in w for w in warnings)
     # Name is set, so there must be NO name warning.
-    assert not any("name" in w.lower() for w in warnings)
+    assert not any("姓名" in w for w in warnings)
 
 
 def test_review_warnings_flag_missing_name() -> None:
     data = ResumeData()  # name is empty
     warnings = build_review_warnings(data)
-    assert any("name" in w.lower() for w in warnings)
+    assert any("姓名" in w for w in warnings)
 
 
 from unittest.mock import AsyncMock, patch
@@ -185,7 +185,7 @@ async def test_ai_turn_merges_only_target_section_and_advances() -> None:
 
     assert len(result.resume_data.workExperience) == 1
     assert result.resume_data.workExperience[0].company == "Acme"
-    assert result.current_question.text == "What did you build at Acme?"
+    assert result.current_question.text == section_prompt("workExperience")
     assert result.asked_count == 1
     assert result.inferred_skills == ["Python"]
     assert len(result.history) == 1
@@ -299,6 +299,7 @@ async def test_ai_turn_missing_next_question_falls_back_to_gap() -> None:
 
     # workExperience now filled -> next gap is education.
     assert result.current_question.section == "education"
+    assert result.current_question.text == section_prompt("education")
 
 
 def test_apply_back_restores_previous_snapshot() -> None:

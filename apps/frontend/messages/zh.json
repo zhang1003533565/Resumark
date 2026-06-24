@@ -342,7 +342,7 @@
           "website": "网站"
         },
         "placeholders": {
-          "projectName": "Resume Matcher",
+          "projectName": "智能简历助手",
           "role": "作者",
           "years": "2023年3月",
           "github": "github.com/username/project",
@@ -928,7 +928,7 @@
       "upload": {
         "kicker": "现有文件",
         "title": "上传简历",
-        "description": "从 PDF、DOC 或 DOCX 文件开始，让 Resume Matcher 将其解析为你的主档案。",
+        "description": "从 PDF、DOC 或 DOCX 文件开始，让简历匹配助手将其解析为你的主档案。",
         "action": "上传简历"
       },
       "wizard": {

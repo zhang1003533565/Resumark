@@ -41,29 +41,28 @@ _VALID_SECTIONS = {
 }
 
 _INTRO_QUESTION = (
-    "Hi — I'll help you build your master resume. "
-    "What's your name, and what kind of role are you going for?"
+    "你好，我会帮你一步步建立主简历。"
+    "先告诉我你的姓名，以及你想投递或发展的职位方向。"
 )
 
 _SECTION_PROMPTS = {
     "intro": _INTRO_QUESTION,
-    "contact": "What's the best email, phone, or links (LinkedIn / GitHub / site) to include?",
-    "summary": "In a sentence or two, how would you describe yourself professionally?",
+    "contact": "你希望简历里放哪些联系方式？可以写邮箱、电话、城市、LinkedIn、GitHub 或个人网站。",
+    "summary": "用一两句话描述你的职业定位、优势或目标方向。",
     "workExperience": (
-        "Tell me about one role: title, company, dates, what you did, and any measurable impact."
+        "请介绍一段工作经历：职位、公司、时间、你负责什么，以及有什么可量化成果。"
     ),
     "internships": (
-        "Tell me about one internship: title, company, dates, what you worked on, "
-        "and what changed because of it."
+        "请介绍一段实习经历：职位、公司、时间、你做了什么，以及带来了什么结果。"
     ),
     "education": (
-        "Tell me about your education: school, degree, dates, and any honors or standout coursework."
+        "请介绍你的教育背景：学校、专业/学位、时间，以及荣誉、课程或亮点。"
     ),
     "personalProjects": (
-        "Tell me about one project: what you built, why it mattered, the tech you used, and any results."
+        "请介绍一个项目：你做了什么、为什么重要、用了哪些技术，以及最终结果。"
     ),
-    "skills": "What tools, technologies, or skills do you want on your resume?",
-    "review": "Let's review what's here before we create your master resume.",
+    "skills": "你希望简历里展示哪些工具、技术或能力？",
+    "review": "我们先检查现有内容，再创建你的主简历。",
 }
 
 # The keyword ("my name", "name") may be lower- or upper-cased, but the captured
@@ -75,11 +74,21 @@ _INTRO_NAME_PATTERNS = (
     re.compile(r"\b[Mm]y name is\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)"),
     re.compile(r"\b[Nn]ame(?:'s| is)?\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)"),
 )
+_LATIN_RE = re.compile(r"[A-Za-z]")
+_HAN_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def section_prompt(section: str) -> str:
     """Deterministic fallback question text for a section."""
-    return _SECTION_PROMPTS.get(section, "What would you like to add next?")
+    return _SECTION_PROMPTS.get(section, "你还想补充哪些内容？")
+
+
+def _normalize_question_text(text: str, section: str) -> str:
+    """Keep user-facing wizard questions Chinese even if an LLM returns English."""
+    value = text.strip()
+    if _LATIN_RE.search(value) and not _HAN_RE.search(value):
+        return section_prompt(section)
+    return value
 
 
 def valid_section(section: str) -> str:
@@ -126,7 +135,7 @@ def build_review_warnings(data: ResumeData) -> list[str]:
     # Name is the one HARD requirement for finalize (the request 422s without it),
     # so surface it at review rather than letting the user hit a generic failure.
     if not info.name.strip():
-        warnings.append("Add your name — it's required to create your resume.")
+        warnings.append("请补充姓名，这是创建简历的必填项。")
     contact = [
         info.email,
         info.phone,
@@ -135,13 +144,13 @@ def build_review_warnings(data: ResumeData) -> list[str]:
         info.website or "",
     ]
     if not any(value.strip() for value in contact):
-        warnings.append("Add at least one contact method (email, phone, or a link).")
+        warnings.append("请至少补充一种联系方式，例如邮箱、电话或链接。")
     if not data.workExperience and not data.personalProjects:
-        warnings.append("Add at least one experience, internship, or project.")
+        warnings.append("请至少补充一段工作、实习或项目经历。")
     if not data.education:
-        warnings.append("Education is empty — skip only if that's intentional.")
+        warnings.append("教育背景目前为空；如果你确实不想填写，可以忽略。")
     if not data.additional.technicalSkills:
-        warnings.append("Skills are empty — add tools or technologies you've used.")
+        warnings.append("技能目前为空；建议补充你使用过的工具或技术。")
     return warnings
 
 
@@ -329,7 +338,11 @@ def _next_question(result: dict[str, Any], data: ResumeData) -> ResumeWizardQues
         text = candidate.get("text")
         section = candidate.get("section")
         if isinstance(text, str) and text.strip() and isinstance(section, str):
-            return ResumeWizardQuestion(text=text.strip(), section=valid_section(section))
+            normalized_section = valid_section(section)
+            return ResumeWizardQuestion(
+                text=_normalize_question_text(text, normalized_section),
+                section=normalized_section,
+            )
     gap = _next_gap_section(data)
     return ResumeWizardQuestion(text=section_prompt(gap), section=gap)
 
@@ -426,7 +439,10 @@ def apply_back(state: ResumeWizardState) -> ResumeWizardState:
     return ResumeWizardState(
         step="intro" if last.section == "intro" else "question",
         resume_data=last.resume_data_before,
-        current_question=ResumeWizardQuestion(text=last.question, section=last.section),
+        current_question=ResumeWizardQuestion(
+            text=_normalize_question_text(last.question, last.section),
+            section=last.section,
+        ),
         history=history,
         asked_count=asked_count,
         inferred_skills=[],

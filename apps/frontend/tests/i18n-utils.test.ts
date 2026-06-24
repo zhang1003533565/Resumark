@@ -49,12 +49,12 @@ describe('getNestedValue', () => {
     expect(getNestedValue(tree, 'count')).toBe('count'); // number, not a string
   });
 
-  it('round-trips a real nested leaf from the bundled en messages', () => {
-    const en = getMessages('en') as unknown as Record<string, unknown>;
-    const leaf = firstStringLeaf(en, '');
+  it('round-trips a real nested leaf from the bundled zh messages', () => {
+    const zh = getMessages('zh') as unknown as Record<string, unknown>;
+    const leaf = firstStringLeaf(zh, '');
     expect(leaf).not.toBeNull();
     // The real message tree resolves an actual leaf path to its string value.
-    expect(getNestedValue(en, leaf!.path)).toBe(leaf!.value);
+    expect(getNestedValue(zh, leaf!.path)).toBe(leaf!.value);
   });
 });
 
