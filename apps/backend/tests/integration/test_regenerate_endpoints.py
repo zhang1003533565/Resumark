@@ -33,6 +33,44 @@ class TestRegenerateSchemas(unittest.TestCase):
             )
 
 
+class TestEnrichmentAnalyzeEndpoint(unittest.IsolatedAsyncioTestCase):
+    async def test_analyze_falls_back_when_llm_fails(self) -> None:
+        mock_db = AsyncMock()
+        mock_db.get_resume.return_value = {
+            "processed_data": {
+                "workExperience": [
+                    {
+                        "title": "运营实习生",
+                        "company": "示例公司",
+                        "description": ["负责日常运营"],
+                    }
+                ],
+                "personalProjects": [
+                    {
+                        "name": "简历工具",
+                        "role": "开发者",
+                        "description": [],
+                    }
+                ],
+            }
+        }
+
+        with (
+            patch.object(enrichment_router, "db", mock_db),
+            patch.object(
+                enrichment_router,
+                "complete_json",
+                AsyncMock(side_effect=RuntimeError("LLM unavailable")),
+            ),
+        ):
+            response = await enrichment_router.analyze_resume("resume_1")
+
+        self.assertEqual([item.item_id for item in response.items_to_enrich], ["exp_0", "proj_0"])
+        self.assertEqual([question.item_id for question in response.questions], ["exp_0", "proj_0"])
+        self.assertIn("AI 分析暂时不可用", response.analysis_summary or "")
+        self.assertIn("请补充", response.questions[0].question)
+
+
 class TestRegenerateEndpoints(unittest.IsolatedAsyncioTestCase):
     async def test_regenerate_processes_multiple_items_in_parallel(self) -> None:
         resume_id = "resume_1"
@@ -100,7 +138,7 @@ class TestRegenerateEndpoints(unittest.IsolatedAsyncioTestCase):
         mock_regenerate_item.assert_awaited()
         mock_regenerate_skills.assert_awaited()
 
-    async def test_regenerate_allows_partial_success_with_errors(self) -> None:
+    async def test_regenerate_falls_back_for_failed_items(self) -> None:
         resume_id = "resume_1"
         request = RegenerateRequest(
             resume_id=resume_id,
@@ -150,8 +188,63 @@ class TestRegenerateEndpoints(unittest.IsolatedAsyncioTestCase):
         ):
             response = await enrichment_router.regenerate_items(request)
 
-        self.assertEqual([item.item_id for item in response.regenerated_items], ["skills"])
-        self.assertEqual([err.item_id for err in response.errors], ["exp_0"])
+        self.assertEqual(
+            [item.item_id for item in response.regenerated_items],
+            ["exp_0", "skills"],
+        )
+        self.assertEqual(response.errors, [])
+        fallback_item = response.regenerated_items[0]
+        self.assertIn("AI 重新生成暂时不可用", fallback_item.diff_summary)
+        self.assertTrue(fallback_item.new_content)
+
+    async def test_regenerate_returns_fallback_when_all_items_fail(self) -> None:
+        resume_id = "resume_1"
+        request = RegenerateRequest(
+            resume_id=resume_id,
+            items=[
+                RegenerateItemInput(
+                    item_id="exp_0",
+                    item_type="experience",
+                    title="运营实习生",
+                    subtitle="示例公司",
+                    current_content=["负责日常运营"],
+                ),
+                RegenerateItemInput(
+                    item_id="skills",
+                    item_type="skills",
+                    title="技能",
+                    current_content=["Python", "Python"],
+                ),
+            ],
+            instruction="写得更有结果感",
+            output_language="zh",
+        )
+
+        mock_db = AsyncMock()
+        mock_db.get_resume.return_value = {"processed_data": {"workExperience": [], "additional": {}}}
+
+        with (
+            patch.object(enrichment_router, "db", mock_db),
+            patch.object(
+                enrichment_router,
+                "_regenerate_experience_or_project",
+                AsyncMock(side_effect=RuntimeError("boom")),
+            ),
+            patch.object(
+                enrichment_router,
+                "_regenerate_skills",
+                AsyncMock(side_effect=RuntimeError("boom")),
+            ),
+        ):
+            response = await enrichment_router.regenerate_items(request)
+
+        self.assertEqual(
+            [item.item_id for item in response.regenerated_items],
+            ["exp_0", "skills"],
+        )
+        self.assertEqual(response.errors, [])
+        self.assertIn("优化并突出结果", response.regenerated_items[0].new_content[0])
+        self.assertEqual(response.regenerated_items[1].new_content, ["Python"])
 
     async def test_apply_regenerated_falls_back_to_metadata_matching(self) -> None:
         resume_id = "resume_1"

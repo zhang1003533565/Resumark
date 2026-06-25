@@ -79,6 +79,8 @@ def test_build_initial_state_has_intro_question() -> None:
 
 
 def test_extract_intro_name_from_conversational_answer() -> None:
+    assert extract_intro_name("我叫张三，想找后端开发岗位") == "张三"
+    assert extract_intro_name("李四，目标是产品经理") == "李四"
     assert extract_intro_name("Hi, I'm James and I want product roles") == "James"
     assert extract_intro_name("My name is Priya Sharma") == "Priya Sharma"
     assert extract_intro_name("just looking around") == ""
@@ -280,6 +282,38 @@ async def test_ai_turn_intro_uses_deterministic_name_fallback() -> None:
         result = await run_ai_turn(state, "Hi, I'm Priya, after backend roles", skip=False)
 
     assert result.resume_data.personalInfo.name == "Priya"
+
+
+async def test_ai_turn_falls_back_when_llm_transport_fails() -> None:
+    state = build_initial_wizard_state()
+
+    with patch(
+        "app.services.resume_wizard.complete_json",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("provider unavailable"),
+    ):
+        result = await run_ai_turn(state, "我叫张三，想找后端开发岗位", skip=False)
+
+    assert result.resume_data.personalInfo.name == "张三"
+    assert result.current_question.section == "contact"
+    assert result.current_question.text == section_prompt("contact")
+    assert result.asked_count == 1
+    assert result.history[0].answer == "我叫张三，想找后端开发岗位"
+
+
+async def test_ai_turn_fallback_records_skills_without_llm() -> None:
+    state = _state_on_section("skills")
+
+    with patch(
+        "app.services.resume_wizard.complete_json",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("provider unavailable"),
+    ):
+        result = await run_ai_turn(state, "Python，FastAPI，React", skip=False)
+
+    assert result.resume_data.additional.technicalSkills == ["Python", "FastAPI", "React"]
+    assert result.current_question.section == "intro"
+    assert result.current_question.text == section_prompt("intro")
 
 
 async def test_ai_turn_missing_next_question_falls_back_to_gap() -> None:

@@ -78,7 +78,7 @@ export async function apiFetch(
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(
-        'Request timed out. If you are running a local LLM, increase NEXT_PUBLIC_REQUEST_TIMEOUT_MS (and the backend REQUEST_TIMEOUT_SECONDS to match); otherwise try a shorter job description or check your connection.'
+        '请求超时。如果你正在使用本地模型，请调大 NEXT_PUBLIC_REQUEST_TIMEOUT_MS，并同步调大后端 REQUEST_TIMEOUT_SECONDS；也可以尝试缩短职位描述或检查网络连接。'
       );
     }
     throw error;

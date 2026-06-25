@@ -21,7 +21,7 @@ from app.schemas import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/applications", tags=["Application Tracker"])
+router = APIRouter(prefix="/applications", tags=["申请追踪"])
 
 
 def _group_by_status(applications: list[dict[str, Any]]) -> dict[str, list[ApplicationResponse]]:
@@ -48,7 +48,7 @@ async def list_applications() -> ApplicationListResponse:
         applications = await db.list_applications()
     except Exception as e:
         logger.error("Failed to list applications: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to load applications. Please try again.")
+        raise HTTPException(status_code=500, detail="加载申请列表失败，请重试。")
     return ApplicationListResponse(columns=_group_by_status(applications))
 
 
@@ -85,7 +85,7 @@ async def create_application(request: ManualApplicationCreate) -> ApplicationRes
             await db.delete_job(job["job_id"])
         except Exception as cleanup_error:
             logger.warning("Failed to clean up orphan job %s: %s", job["job_id"], cleanup_error)
-        raise HTTPException(status_code=500, detail="Failed to create application. Please try again.")
+        raise HTTPException(status_code=500, detail="创建申请失败，请重试。")
 
     # Best-effort: cache company/role on the job for later reuse — never 500.
     if company or role:
@@ -105,7 +105,7 @@ async def get_application_detail(application_id: str) -> ApplicationDetailRespon
     """
     application = await db.get_application(application_id)
     if application is None:
-        raise HTTPException(status_code=404, detail="Application not found")
+        raise HTTPException(status_code=404, detail="未找到该申请。")
 
     job_content: str | None = None
     resume: dict[str, Any] | None = None
@@ -128,8 +128,8 @@ async def bulk_update_applications(request: BulkStatusUpdate) -> ApplicationActi
         moved = await db.bulk_update_applications(request.application_ids, request.status.value)
     except Exception as e:
         logger.error("Failed to bulk-update applications: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to move applications. Please try again.")
-    return ApplicationActionResponse(message=f"Moved {moved} application(s)", affected=moved)
+        raise HTTPException(status_code=500, detail="移动申请失败，请重试。")
+    return ApplicationActionResponse(message=f"已移动 {moved} 条申请", affected=moved)
 
 
 @router.patch("/{application_id}", response_model=ApplicationResponse)
@@ -143,9 +143,9 @@ async def update_application(application_id: str, request: ApplicationUpdate) ->
         updated = await db.update_application(application_id, updates)
     except Exception as e:
         logger.error("Failed to update application %s: %s", application_id, e)
-        raise HTTPException(status_code=500, detail="Failed to update application. Please try again.")
+        raise HTTPException(status_code=500, detail="更新申请失败，请重试。")
     if updated is None:
-        raise HTTPException(status_code=404, detail="Application not found")
+        raise HTTPException(status_code=404, detail="未找到该申请。")
     return ApplicationResponse(**updated)
 
 
@@ -156,10 +156,10 @@ async def delete_application(application_id: str) -> ApplicationActionResponse:
         deleted = await db.delete_application(application_id)
     except Exception as e:
         logger.error("Failed to delete application %s: %s", application_id, e)
-        raise HTTPException(status_code=500, detail="Failed to delete application. Please try again.")
+        raise HTTPException(status_code=500, detail="删除申请失败，请重试。")
     if not deleted:
-        raise HTTPException(status_code=404, detail="Application not found")
-    return ApplicationActionResponse(message="Application deleted", affected=1)
+        raise HTTPException(status_code=404, detail="未找到该申请。")
+    return ApplicationActionResponse(message="申请已删除", affected=1)
 
 
 @router.post("/bulk-delete", response_model=ApplicationActionResponse)
@@ -169,8 +169,8 @@ async def bulk_delete_applications(request: BulkDelete) -> ApplicationActionResp
         deleted = await db.bulk_delete_applications(request.application_ids)
     except Exception as e:
         logger.error("Failed to bulk-delete applications: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to delete applications. Please try again.")
-    return ApplicationActionResponse(message=f"Deleted {deleted} application(s)", affected=deleted)
+        raise HTTPException(status_code=500, detail="批量删除申请失败，请重试。")
+    return ApplicationActionResponse(message=f"已删除 {deleted} 条申请", affected=deleted)
 
 
 async def _extract_company_role(job_description: str) -> dict[str, str | None]:

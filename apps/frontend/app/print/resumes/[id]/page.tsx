@@ -81,7 +81,7 @@ async function fetchResumeData(id: string): Promise<ResumeData> {
     cache: 'no-store',
   });
   if (!res.ok) {
-    throw new Error(`Failed to load resume (status ${res.status}).`);
+    throw new Error(`加载简历失败（状态码 ${res.status}）。`);
   }
   const payload = (await res.json()) as {
     data: { processed_resume?: ResumeData; raw_resume?: { content?: string } };
@@ -97,10 +97,10 @@ async function fetchResumeData(id: string): Promise<ResumeData> {
       // Note: Avoid logging content preview to prevent PII exposure
       console.error('Failed to parse resume JSON:', {
         resumeId: id,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error.message : '未知错误',
         contentLength: payload.data.raw_resume.content.length,
       });
-      throw new Error('Failed to parse resume data. The resume content may be corrupted.');
+      throw new Error('解析简历数据失败，简历内容可能已损坏。');
     }
   }
   return {} as ResumeData;

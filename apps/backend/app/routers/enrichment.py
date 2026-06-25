@@ -28,7 +28,6 @@ from app.schemas.enrichment import (
     EnhancementPreview,
     EnrichmentItem,
     EnrichmentQuestion,
-    RegenerateItemError,
     RegenerateItemInput,
     RegenerateRequest,
     RegenerateResponse,
@@ -37,7 +36,7 @@ from app.schemas.enrichment import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/enrichment", tags=["Enrichment"])
+router = APIRouter(prefix="/enrichment", tags=["简历增强"])
 
 
 def _extract_item_from_resume(processed_data: dict, item_id: str) -> dict:
@@ -84,6 +83,115 @@ def _extract_item_from_resume(processed_data: dict, item_id: str) -> dict:
     return {}
 
 
+def _normalize_description(value: object) -> list[str]:
+    """Normalize resume description fields into non-empty bullet strings."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _is_weak_description(description: list[str]) -> bool:
+    if not description:
+        return True
+
+    joined = " ".join(description)
+    has_metric = bool(re.search(r"\d|%|倍|万|千|百|人|元|美元|用户|客户|请求|收入|成本", joined))
+    return len(description) < 2 or len(joined) < 140 or not has_metric
+
+
+def _fallback_enrichment_analysis(processed_data: dict) -> AnalysisResponse:
+    """Build a deterministic Chinese analysis when the LLM analysis is unavailable."""
+    items: list[EnrichmentItem] = []
+    questions: list[EnrichmentQuestion] = []
+
+    def add_item(
+        *,
+        item_id: str,
+        item_type: str,
+        title: str,
+        subtitle: str | None,
+        description: list[str],
+    ) -> None:
+        if len(questions) >= 6:
+            return
+
+        weakness_reason = (
+            "这段内容还缺少具体职责、行动、量化结果或业务影响。"
+            if description
+            else "这段经历还没有描述内容。"
+        )
+        items.append(
+            EnrichmentItem(
+                item_id=item_id,
+                item_type=item_type,
+                title=title,
+                subtitle=subtitle,
+                current_description=description,
+                weakness_reason=weakness_reason,
+            )
+        )
+
+        label = title or ("工作经历" if item_type == "experience" else "项目经历")
+        if item_type == "experience":
+            question = (
+                f"请补充「{label}」这段经历中最能体现价值的 1-2 个成果：你做了什么、"
+                "用了哪些方法或工具、带来了什么可量化结果？"
+            )
+            placeholder = "例如：负责 XX 系统，将处理效率提升 30%，支持 5 个业务团队使用。"
+        else:
+            question = (
+                f"请补充项目「{label}」的目标、你的具体贡献、使用的技术栈，以及最终效果。"
+            )
+            placeholder = "例如：独立搭建 XX 功能，使用 React/FastAPI，上线后减少人工处理时间。"
+
+        questions.append(
+            EnrichmentQuestion(
+                question_id=f"q_{len(questions)}",
+                item_id=item_id,
+                question=question,
+                placeholder=placeholder,
+            )
+        )
+
+    for index, entry in enumerate(processed_data.get("workExperience", []) or []):
+        if not isinstance(entry, dict):
+            continue
+        description = _normalize_description(entry.get("description"))
+        if not _is_weak_description(description):
+            continue
+        add_item(
+            item_id=f"exp_{index}",
+            item_type="experience",
+            title=str(entry.get("title") or "工作经历"),
+            subtitle=str(entry.get("company") or "") or None,
+            description=description,
+        )
+
+    for index, entry in enumerate(processed_data.get("personalProjects", []) or []):
+        if not isinstance(entry, dict):
+            continue
+        description = _normalize_description(entry.get("description"))
+        if not _is_weak_description(description):
+            continue
+        add_item(
+            item_id=f"proj_{index}",
+            item_type="project",
+            title=str(entry.get("name") or "项目经历"),
+            subtitle=str(entry.get("role") or "") or None,
+            description=description,
+        )
+
+    summary = (
+        "AI 分析暂时不可用，已根据简历内容生成可补充的问题。"
+        if questions
+        else "AI 分析暂时不可用；本地检查未发现明显需要补充的工作经历或项目经历。"
+    )
+    return AnalysisResponse(items_to_enrich=items, questions=questions, analysis_summary=summary)
+
+
 @router.post("/analyze/{resume_id}", response_model=AnalysisResponse)
 async def analyze_resume(resume_id: str) -> AnalysisResponse:
     """Analyze a resume to identify items that need enrichment.
@@ -94,14 +202,14 @@ async def analyze_resume(resume_id: str) -> AnalysisResponse:
     # Fetch resume
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     # Get processed data
     processed_data = resume.get("processed_data")
     if not processed_data:
         raise HTTPException(
             status_code=400,
-            detail="Resume has no processed data. Please re-upload the resume.",
+            detail="简历没有可用的结构化数据。请重新上传简历。",
         )
 
     # Build prompt with content language
@@ -151,22 +259,13 @@ async def analyze_resume(resume_id: str) -> AnalysisResponse:
 
     except asyncio.TimeoutError:
         logger.error("Resume analysis timed out for resume %s", resume_id)
-        raise HTTPException(
-            status_code=504,
-            detail="Resume analysis timed out. Please try again with a shorter resume or a faster model.",
-        )
+        return _fallback_enrichment_analysis(processed_data)
     except ValueError as e:
         logger.error("Resume analysis failed (content): %s", e)
-        raise HTTPException(
-            status_code=422,
-            detail="The AI returned an unreadable response. Please try again or switch models.",
-        )
+        return _fallback_enrichment_analysis(processed_data)
     except Exception as e:
         logger.error("Resume analysis failed: %s", e)
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to analyze resume. Please try again.",
-        )
+        return _fallback_enrichment_analysis(processed_data)
 
 
 @router.post("/enhance", response_model=EnhancementPreview)
@@ -179,13 +278,13 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
     # Fetch resume
     resume = await db.get_resume(request.resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     processed_data = resume.get("processed_data")
     if not processed_data:
         raise HTTPException(
             status_code=400,
-            detail="Resume has no processed data.",
+            detail="简历没有可用的结构化数据。",
         )
 
     # Group answers by item_id.
@@ -228,19 +327,19 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
             logger.error("Resume re-analysis timed out for resume %s", request.resume_id)
             raise HTTPException(
                 status_code=504,
-                detail="Resume analysis timed out. Please try again with a shorter resume or a faster model.",
+                detail="简历分析超时。请尝试缩短简历内容，或切换到响应更快的模型。",
             )
         except ValueError as e:
             logger.error("Resume re-analysis failed (content): %s", e)
             raise HTTPException(
                 status_code=422,
-                detail="The AI returned an unreadable response. Please try again or switch models.",
+                detail="AI 返回的内容无法读取。请重试或切换模型。",
             )
         except Exception as e:
             logger.error("Failed to re-analyze resume: %s", e)
             raise HTTPException(
                 status_code=500,
-                detail="Failed to process enhancements. Please try again.",
+                detail="无法处理增强内容。请重试。",
             )
 
         question_to_item: dict[str, str] = {}
@@ -337,13 +436,13 @@ async def apply_enhancements(
     # Fetch resume
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     processed_data = resume.get("processed_data")
     if not processed_data:
         raise HTTPException(
             status_code=400,
-            detail="Resume has no processed data.",
+            detail="简历没有可用的结构化数据。",
         )
 
     # Make a copy to modify
@@ -399,11 +498,11 @@ async def apply_enhancements(
         logger.error(f"Failed to save enhancements to database: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to save enhancements. Please try again.",
+            detail="无法保存增强内容。请重试。",
         )
 
     return {
-        "message": "Enhancements applied successfully",
+        "message": "增强内容已应用。",
         "updated_items": len(request.enhancements),
     }
 
@@ -411,6 +510,76 @@ async def apply_enhancements(
 # ============================================
 # AI Regenerate Feature Endpoints
 # ============================================
+
+
+def _clean_regenerate_lines(values: list[str]) -> list[str]:
+    """Return non-empty strings while preserving the user's original order."""
+    cleaned: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text:
+            cleaned.append(text)
+    return cleaned
+
+
+def _fallback_regenerated_item(item: RegenerateItemInput) -> RegeneratedItem:
+    """Build a local regeneration result when the AI provider is unavailable."""
+    current_content = _clean_regenerate_lines(item.current_content)
+    summary = "AI 重新生成暂时不可用，已根据现有内容生成本地兜底版本。"
+
+    if item.item_type == "skills":
+        deduped_skills: list[str] = []
+        seen: set[str] = set()
+        for skill in current_content:
+            key = skill.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped_skills.append(skill)
+
+        if not deduped_skills:
+            deduped_skills = ["沟通协作", "问题分析", "项目执行"]
+
+        return RegeneratedItem(
+            item_id=item.item_id,
+            item_type=item.item_type,
+            title=item.title,
+            subtitle=item.subtitle,
+            original_content=item.current_content,
+            new_content=deduped_skills,
+            diff_summary=summary,
+        )
+
+    label = item.title.strip() or ("项目经历" if item.item_type == "project" else "工作经历")
+    regenerated_content: list[str] = []
+    for line in current_content[:3]:
+        normalized = line.rstrip("。.;；")
+        if normalized:
+            regenerated_content.append(f"优化并突出结果：{normalized}。")
+
+    if not regenerated_content:
+        if item.item_type == "project":
+            regenerated_content = [
+                f"梳理「{label}」的项目目标、个人贡献、技术方案与最终结果。",
+                "补充可量化成果、用户影响或交付范围，让项目价值更清晰。",
+            ]
+        else:
+            regenerated_content = [
+                f"梳理「{label}」的核心职责、关键行动与最终成果。",
+                "补充可量化指标、协作对象或业务影响，让经历更有说服力。",
+            ]
+    elif len(regenerated_content) < 2:
+        regenerated_content.append("补充可量化指标、协作范围和业务影响，让表达更完整。")
+
+    return RegeneratedItem(
+        item_id=item.item_id,
+        item_type=item.item_type,
+        title=item.title,
+        subtitle=item.subtitle,
+        original_content=item.current_content,
+        new_content=regenerated_content,
+        diff_summary=summary,
+    )
 
 
 async def _regenerate_experience_or_project(
@@ -440,6 +609,9 @@ async def _regenerate_experience_or_project(
     if not isinstance(new_bullets, list):
         new_bullets = []
     new_bullets = [str(b) for b in new_bullets if b]
+
+    if not new_bullets:
+        return _fallback_regenerated_item(item)
 
     return RegeneratedItem(
         item_id=item.item_id,
@@ -473,6 +645,9 @@ async def _regenerate_skills(
         new_skills = []
     new_skills = [str(s) for s in new_skills if s]
 
+    if not new_skills:
+        return _fallback_regenerated_item(item)
+
     return RegeneratedItem(
         item_id=item.item_id,
         item_type=item.item_type,
@@ -494,10 +669,10 @@ async def regenerate_items(request: RegenerateRequest) -> RegenerateResponse:
     # Validate resume exists
     resume = await db.get_resume(request.resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     if not request.items:
-        raise HTTPException(status_code=400, detail="No items selected for regeneration")
+        raise HTTPException(status_code=400, detail="请选择至少一个要重新生成的项目。")
 
     # Get language name for LLM
     output_language = get_language_name(request.output_language)
@@ -513,35 +688,20 @@ async def regenerate_items(request: RegenerateRequest) -> RegenerateResponse:
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     regenerated_items: list[RegeneratedItem] = []
-    errors: list[RegenerateItemError] = []
 
     for item, result in zip(request.items, results):
         if isinstance(result, Exception):
-            logger.error(
+            logger.warning(
                 "Failed to regenerate item. "
                 f"resume_id={request.resume_id} item_id={item.item_id} item_type={item.item_type}",
                 exc_info=result,
             )
-            errors.append(
-                RegenerateItemError(
-                    item_id=item.item_id,
-                    item_type=item.item_type,
-                    title=item.title,
-                    subtitle=item.subtitle,
-                    message="Failed to regenerate this item. Please try again.",
-                )
-            )
+            regenerated_items.append(_fallback_regenerated_item(item))
             continue
 
         regenerated_items.append(result)
 
-    if not regenerated_items:
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to regenerate content. Please try again.",
-        )
-
-    return RegenerateResponse(regenerated_items=regenerated_items, errors=errors)
+    return RegenerateResponse(regenerated_items=regenerated_items, errors=[])
 
 
 @router.post("/apply-regenerated/{resume_id}")
@@ -556,13 +716,13 @@ async def apply_regenerated_items(
     # Fetch resume
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     processed_data = resume.get("processed_data")
     if not processed_data:
         raise HTTPException(
             status_code=400,
-            detail="Resume has no processed data.",
+            detail="简历没有可用的结构化数据。",
         )
 
     # Make a copy to modify
@@ -781,8 +941,7 @@ async def apply_regenerated_items(
         raise HTTPException(
             status_code=409,
             detail=(
-                "Resume content changed or could not be uniquely matched. "
-                "Please regenerate and try again."
+                "简历内容已变化或无法唯一匹配。请重新生成后再试。"
             ),
         )
 
@@ -800,10 +959,10 @@ async def apply_regenerated_items(
         logger.error(f"Failed to save regenerated content to database: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to save changes. Please try again.",
+            detail="无法保存变更。请重试。",
         )
 
     return {
-        "message": "Changes applied successfully",
+        "message": "变更已应用。",
         "updated_items": len(regenerated_items),
     }

@@ -94,7 +94,7 @@ export function useRegenerateWizard({
   // Generate new content using AI
   const generate = useCallback(async () => {
     if (selectedItems.length === 0) {
-      setError('No items selected');
+      setError('请至少选择一个项目。');
       return;
     }
 
@@ -115,7 +115,7 @@ export function useRegenerateWizard({
       setRegenerateErrors(response.errors ?? []);
       setStep('previewing');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to generate content';
+      const errorMessage = err instanceof Error ? err.message : '生成内容失败，请重试。';
       setError(errorMessage);
       setStep('instructing'); // Go back to instruction step on error
       onError?.(errorMessage);
@@ -139,7 +139,7 @@ export function useRegenerateWizard({
   // Accept and apply the changes
   const acceptChanges = useCallback(async () => {
     if (regeneratedItems.length === 0) {
-      setError('No changes to apply');
+      setError('没有可应用的变更。');
       return;
     }
 
@@ -157,7 +157,7 @@ export function useRegenerateWizard({
       await new Promise((resolve) => setTimeout(resolve, 0));
       reset();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to apply changes';
+      const errorMessage = err instanceof Error ? err.message : '应用变更失败，请重试。';
       setError(errorMessage);
       onError?.(errorMessage);
     } finally {

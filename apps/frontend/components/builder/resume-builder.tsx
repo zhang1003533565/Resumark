@@ -189,12 +189,15 @@ const ResumeBuilderContent = () => {
         return;
       }
 
-      if (/resume content changed|uniquely matched|please regenerate/i.test(errorMessage)) {
+      if (
+        /resume content changed|uniquely matched|please regenerate/i.test(errorMessage) ||
+        /简历内容.*变化|无法唯一匹配|重新生成后再试/.test(errorMessage)
+      ) {
         showNotification(t('builder.regenerate.errors.resumeChanged'), 'danger');
         return;
       }
 
-      if (/generate/i.test(errorMessage)) {
+      if (/generate|regenerate/i.test(errorMessage) || /生成|重新生成/.test(errorMessage)) {
         showNotification(t('builder.regenerate.errors.generationFailed'), 'danger');
         return;
       }

@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import logging
+import re
 import unicodedata
 from collections.abc import Awaitable
 from pathlib import Path
@@ -167,6 +168,50 @@ def _raise_improve_error(
 ) -> NoReturn:
     logger.error("Resume %s failed during %s: %s", action, stage, error)
     raise HTTPException(status_code=500, detail=detail)
+
+
+_LOCAL_SKILL_KEYWORDS = (
+    "Python",
+    "JavaScript",
+    "TypeScript",
+    "React",
+    "Next.js",
+    "Vue",
+    "Node.js",
+    "FastAPI",
+    "Django",
+    "Flask",
+    "SQL",
+    "PostgreSQL",
+    "MySQL",
+    "Redis",
+    "Docker",
+    "Kubernetes",
+    "AWS",
+    "Azure",
+    "GCP",
+    "CI/CD",
+    "Machine Learning",
+    "Data Analysis",
+)
+
+
+def _extract_local_job_keywords(job_content: str) -> dict[str, Any]:
+    """Best-effort local keyword extraction when the LLM is unavailable."""
+    content = job_content or ""
+    content_lower = content.casefold()
+    required_skills = [
+        skill for skill in _LOCAL_SKILL_KEYWORDS if skill.casefold() in content_lower
+    ]
+    sentences = [
+        part.strip()
+        for part in re.split(r"[\n。.!?；;]+", content)
+        if len(part.strip()) >= 12
+    ]
+    return {
+        "required_skills": required_skills[:6],
+        "key_responsibilities": sentences[:3],
+    }
 
 
 def _get_original_resume_data(resume: dict[str, Any]) -> dict[str, Any] | None:
@@ -413,13 +458,13 @@ def _preserve_personal_info(
 
     if not original_data:
         warnings.append(
-            "Original resume data unavailable - personal info may be AI-generated"
+            "原始简历数据不可用，个人信息可能由 AI 生成"
         )
         return improved_data, warnings
 
     original_info = original_data.get("personalInfo")
     if not isinstance(original_info, dict):
-        warnings.append("Original personal info missing or invalid")
+        warnings.append("原始个人信息缺失或无效")
         return improved_data, warnings
 
     # SVC-001: Use deep copy to prevent any mutation of original data
@@ -485,6 +530,93 @@ def _validate_confirm_payload(
         raise ValueError(f"personalInfo fields changed: {', '.join(mismatches)}")
 
 
+async def _fallback_improve_preview_response(
+    *,
+    request: ImproveResumeRequest,
+    resume: dict[str, Any],
+    job: dict[str, Any],
+    prompt_id: str,
+    reason: str,
+) -> ImproveResumeResponse:
+    """Return a safe preview when AI tailoring cannot complete."""
+    original_resume_data = _get_original_resume_data(resume)
+    if not original_resume_data:
+        raise HTTPException(
+            status_code=422,
+            detail="简历缺少结构化数据，无法生成预览。请重新上传简历。",
+        )
+
+    improved_data = ResumeData.model_validate(
+        copy.deepcopy(original_resume_data)
+    ).model_dump()
+    improved_text = json.dumps(improved_data, indent=2)
+    preview_hash = _hash_improved_data(improved_data)
+
+    preview_hashes = job.get("preview_hashes")
+    if not isinstance(preview_hashes, dict):
+        preview_hashes = {}
+    preview_hashes[prompt_id] = preview_hash
+    try:
+        await db.update_job(
+            request.job_id,
+            {
+                "preview_hash": preview_hash,
+                "preview_prompt_id": prompt_id,
+                "preview_hashes": preview_hashes,
+            },
+        )
+    except Exception as e:
+        logger.warning(
+            "Failed to persist fallback preview hash for job %s: %s",
+            request.job_id,
+            e,
+        )
+
+    job_keywords = job.get("job_keywords")
+    if not isinstance(job_keywords, dict):
+        job_keywords = _extract_local_job_keywords(str(job.get("content", "")))
+
+    diff_summary, detailed_changes, diff_error = _calculate_diff_from_resume(
+        resume,
+        improved_data,
+    )
+    warnings = [
+        "AI 定制暂时不可用，已返回原始简历预览。请检查模型/API 配置后重试。",
+        reason,
+    ]
+    if diff_error:
+        warnings.append(f"无法计算变更内容：{diff_error}")
+
+    improvements = generate_improvements(job_keywords)
+    request_id = str(uuid4())
+    return ImproveResumeResponse(
+        request_id=request_id,
+        data=ImproveResumeData(
+            request_id=request_id,
+            resume_id=None,
+            job_id=request.job_id,
+            resume_preview=ResumeData.model_validate(improved_data),
+            improvements=[
+                {
+                    "suggestion": imp["suggestion"],
+                    "lineNumber": imp.get("lineNumber"),
+                }
+                for imp in improvements
+            ],
+            markdownOriginal=resume["content"],
+            markdownImproved=improved_text,
+            cover_letter=None,
+            outreach_message=None,
+            diff_summary=diff_summary,
+            detailed_changes=detailed_changes,
+            refinement_stats=None,
+            warnings=warnings,
+            refinement_attempted=False,
+            refinement_successful=False,
+        ),
+    )
+
+
 async def _generate_auxiliary_messages(
     improved_data: dict[str, Any],
     job_content: str,
@@ -528,7 +660,10 @@ async def _generate_auxiliary_messages(
                 exc_info=result,
             )
             if label != "title":
-                warnings.append(f"{label.replace('_', ' ').title()} generation failed")
+                if label == "cover_letter":
+                    warnings.append("求职信生成失败")
+                elif label == "outreach":
+                    warnings.append("联系邮件生成失败")
         else:
             if label == "title":
                 title = result
@@ -540,7 +675,7 @@ async def _generate_auxiliary_messages(
     return cover_letter, outreach_message, title, warnings
 
 
-router = APIRouter(prefix="/resumes", tags=["Resumes"])
+router = APIRouter(prefix="/resumes", tags=["简历"])
 
 ALLOWED_TYPES = {
     "application/pdf",
@@ -561,7 +696,7 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type: {file.content_type}. Allowed: PDF, DOC, DOCX",
+            detail=f"不支持的文件类型：{file.content_type}。支持：PDF、DOC、DOCX",
         )
 
     # Read and validate size
@@ -569,11 +704,11 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
-            detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
+            detail=f"文件太大。最大支持 {MAX_FILE_SIZE // (1024 * 1024)}MB。",
         )
 
     if len(content) == 0:
-        raise HTTPException(status_code=400, detail="Empty file")
+        raise HTTPException(status_code=400, detail="文件不能为空。")
 
     # Convert to markdown
     try:
@@ -582,14 +717,14 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
         logger.error(f"Document parsing failed: {e}")
         raise HTTPException(
             status_code=422,
-            detail="Failed to parse document. Please ensure it's a valid PDF or DOCX file.",
+            detail="解析文档失败。请确认上传的是有效的 PDF、DOC 或 DOCX 文件。",
         )
 
     # Validate extracted text is not empty (image-based PDFs / scanned documents)
     if not markdown_content or not markdown_content.strip():
         raise HTTPException(
             status_code=422,
-            detail="Could not extract text from the uploaded file. The document may be image-based or scanned. Please upload a file with selectable text.",
+            detail="无法从上传文件中提取文字。该文档可能是图片或扫描件，请上传可选择文字的文件。",
         )
 
     # Store in database first with "processing" status (atomic master assignment)
@@ -625,9 +760,9 @@ async def upload_resume(file: UploadFile = File(...)) -> ResumeUploadResponse:
     # Return accurate status to client (API-001 fix)
     return ResumeUploadResponse(
         message=(
-            f"File {file.filename} uploaded successfully"
+            f"文件 {file.filename} 上传成功"
             if resume["processing_status"] == "ready"
-            else f"File {file.filename} uploaded but parsing failed"
+            else f"文件 {file.filename} 已上传，但解析失败"
         ),
         request_id=str(uuid4()),
         resume_id=resume["resume_id"],
@@ -647,7 +782,7 @@ async def get_resume(resume_id: str = Query(...)) -> ResumeFetchResponse:
     resume = await db.get_resume(resume_id)
 
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     # Get processing status (default to "pending" for old records)
     processing_status = resume.get("processing_status", "pending")
@@ -722,17 +857,17 @@ async def improve_resume_preview_endpoint(
     """
     resume = await db.get_resume(request.resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     job = await db.get_job(request.job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job description not found")
+        raise HTTPException(status_code=404, detail="未找到职位描述。")
 
     language = get_content_language()
     prompt_id = request.prompt_id or _get_default_prompt_id()
 
     stage = "load_job_keywords"
-    detail = "Failed to preview resume. Please try again."
+    detail = "预览定制简历失败，请重试。"
     try:
         return await asyncio.wait_for(
             _improve_preview_flow(
@@ -754,14 +889,32 @@ async def improve_resume_preview_endpoint(
         raise HTTPException(
             status_code=504,
             detail=(
-                f"Resume tailoring timed out after {settings.request_timeout_seconds}s. "
-                "If you are running a local LLM, raise REQUEST_TIMEOUT_SECONDS (and the "
-                "matching frontend NEXT_PUBLIC_REQUEST_TIMEOUT_MS); otherwise try a shorter "
-                "job description or a simpler prompt."
+                f"简历定制在 {settings.request_timeout_seconds} 秒后超时。"
+                "如果你正在使用本地模型，请调大 REQUEST_TIMEOUT_SECONDS，并同步调大前端 "
+                "NEXT_PUBLIC_REQUEST_TIMEOUT_MS；也可以尝试缩短职位描述或简化提示词。"
             ),
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        _raise_improve_error("preview", stage, e, detail)
+        logger.warning(
+            "Improve preview failed; returning fallback preview. stage=%s error=%s",
+            stage,
+            e,
+            exc_info=e,
+        )
+        try:
+            return await _fallback_improve_preview_response(
+                request=request,
+                resume=resume,
+                job=job,
+                prompt_id=prompt_id,
+                reason="AI 定制流程失败，已启用本地预览兜底。",
+            )
+        except HTTPException:
+            raise
+        except Exception as fallback_error:
+            _raise_improve_error("preview", stage, fallback_error, detail)
 
 
 async def _improve_preview_flow(
@@ -840,11 +993,11 @@ async def _improve_preview_flow(
             rejected_targets = verified_skill_plan.get("rejected", [])
             if isinstance(rejected_targets, list) and rejected_targets:
                 response_warnings.append(
-                    f"{len(rejected_targets)} unsupported skill target(s) rejected"
+                    f"已拒绝 {len(rejected_targets)} 个不支持的技能目标"
                 )
         except Exception as e:
             logger.warning("Skill target planning failed, continuing without it: %s", e)
-            response_warnings.append("Skill target planning failed")
+            response_warnings.append("技能目标规划失败")
 
         diff_result = await generate_resume_diffs(
             original_resume=resume["content"],
@@ -872,7 +1025,7 @@ async def _improve_preview_flow(
 
         if rejected_changes:
             response_warnings.append(
-                f"{len(rejected_changes)} change(s) rejected during verification"
+                f"校验时已拒绝 {len(rejected_changes)} 项变更"
             )
 
         logger.info(
@@ -960,7 +1113,7 @@ async def _improve_preview_flow(
     except Exception as e:
         logger.warning("Refinement failed, using unrefined result: %s", e)
         if refinement_attempted:
-            response_warnings.append(f"Refinement failed: {str(e)}")
+            response_warnings.append(f"简历精修失败：{str(e)}")
 
     improved_text = json.dumps(improved_data, indent=2)
     preview_hash = _hash_improved_data(improved_data)
@@ -991,7 +1144,7 @@ async def _improve_preview_flow(
         improved_data,
     )
     if diff_error:
-        response_warnings.append(f"Could not calculate changes: {diff_error}")
+        response_warnings.append(f"无法计算变更内容：{diff_error}")
     improvements = generate_improvements(job_keywords)
 
     request_id = str(uuid4())
@@ -1030,11 +1183,11 @@ async def improve_resume_confirm_endpoint(
     """Confirm and persist a tailored resume."""
     resume = await db.get_resume(request.resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     job = await db.get_job(request.job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job description not found")
+        raise HTTPException(status_code=404, detail="未找到职位描述。")
 
     feature_config = _load_config()
     enable_cover_letter = feature_config.get("enable_cover_letter", False)
@@ -1042,7 +1195,7 @@ async def improve_resume_confirm_endpoint(
     language = get_content_language()
 
     stage = "serialize_improved_data"
-    detail = "Failed to confirm resume. Please try again."
+    detail = "确认并保存定制简历失败，请重试。"
     try:
         improved_data = request.improved_data.model_dump()
         improved_text = json.dumps(improved_data, indent=2)
@@ -1054,7 +1207,7 @@ async def improve_resume_confirm_endpoint(
             logger.warning("Resume confirm rejected: %s", e)
             raise HTTPException(
                 status_code=400,
-                detail="Invalid improved resume data. Please retry preview.",
+                detail="定制简历数据无效，请重新预览后再试。",
             )
         preview_hashes = job.get("preview_hashes")
         allowed_hashes: set[str] = set()
@@ -1076,7 +1229,7 @@ async def improve_resume_confirm_endpoint(
             )
             raise HTTPException(
                 status_code=400,
-                detail="Preview required before confirmation. Please retry preview.",
+                detail="确认前需要先生成预览，请重新预览后再试。",
             )
 
         request_hash = _hash_improved_data(improved_data)
@@ -1084,7 +1237,7 @@ async def improve_resume_confirm_endpoint(
             logger.warning("Resume confirm rejected due to preview hash mismatch.")
             raise HTTPException(
                 status_code=400,
-                detail="Invalid improved resume data. Please retry preview.",
+                detail="定制简历数据无效，请重新预览后再试。",
             )
 
         stage = "calculate_diff"
@@ -1094,7 +1247,7 @@ async def improve_resume_confirm_endpoint(
             improved_data,
         )
         if diff_error:
-            response_warnings.append(f"Could not calculate changes: {diff_error}")
+            response_warnings.append(f"无法计算变更内容：{diff_error}")
 
         stage = "generate_auxiliary_messages"
         (
@@ -1180,12 +1333,12 @@ async def improve_resume_endpoint(
     # Fetch resume
     resume = await db.get_resume(request.resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     # Fetch job description
     job = await db.get_job(request.job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job description not found")
+        raise HTTPException(status_code=404, detail="未找到职位描述。")
 
     # Load feature configuration and content language
     feature_config = _load_config()
@@ -1230,9 +1383,8 @@ async def improve_resume_endpoint(
 
             if rejected_changes:
                 response_warnings.append(
-                    f"{len(rejected_changes)} change(s) rejected during verification"
+                    f"校验时已拒绝 {len(rejected_changes)} 项变更"
                 )
-
             logger.info(
                 "Diff-based improve (legacy): %d applied, %d rejected, %d warnings",
                 len(applied_changes),
@@ -1318,7 +1470,7 @@ async def improve_resume_endpoint(
         except Exception as e:
             logger.warning("Refinement failed, using unrefined result: %s", e)
             if refinement_attempted:
-                response_warnings.append(f"Refinement failed: {str(e)}")
+                response_warnings.append(f"简历精修失败：{str(e)}")
 
         # Convert improved data to JSON string for storage
         improved_text = json.dumps(improved_data, indent=2)
@@ -1329,7 +1481,7 @@ async def improve_resume_endpoint(
             improved_data,
         )
         if diff_error:
-            response_warnings.append(f"Could not calculate changes: {diff_error}")
+            response_warnings.append(f"无法计算变更内容：{diff_error}")
 
         # Generate improvement suggestions
         improvements = generate_improvements(job_keywords)
@@ -1412,7 +1564,7 @@ async def improve_resume_endpoint(
         logger.error(f"Resume improvement failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to improve resume. Please try again.",
+            detail="定制简历失败，请重试。",
         )
 
 
@@ -1423,7 +1575,7 @@ async def update_resume_endpoint(
     """Update a resume with new structured data."""
     existing = await db.get_resume(resume_id)
     if not existing:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     updated_data = resume_data.model_dump()
     updated_content = json.dumps(updated_data, indent=2)
@@ -1439,7 +1591,7 @@ async def update_resume_endpoint(
     )
 
     if not updated:
-        raise HTTPException(status_code=500, detail="Failed to update resume")
+        raise HTTPException(status_code=500, detail="更新简历失败。")
 
     raw_resume = RawResume(
         id=None,
@@ -1505,7 +1657,7 @@ async def download_resume_pdf(
     """
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     # Build print URL with all settings
     params = (
@@ -1552,9 +1704,9 @@ async def download_resume_pdf(
 async def delete_resume(resume_id: str) -> dict:
     """Delete a resume by ID."""
     if not await db.delete_resume(resume_id):
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
-    return {"message": "Resume deleted successfully"}
+    return {"message": "简历已删除"}
 
 
 @router.post("/{resume_id}/retry-processing", response_model=ResumeUploadResponse)
@@ -1566,19 +1718,19 @@ async def retry_processing(resume_id: str) -> ResumeUploadResponse:
     """
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     if resume.get("processing_status") not in ("failed", "processing"):
         raise HTTPException(
             status_code=400,
-            detail="Only resumes with 'failed' or 'processing' status can be retried.",
+            detail="只有处理失败或处理中状态的简历可以重试。",
         )
 
     markdown_content = resume.get("content", "")
     if not markdown_content:
         raise HTTPException(
             status_code=400,
-            detail="Resume has no stored content to re-process.",
+            detail="该简历没有可重新处理的原始内容。",
         )
 
     try:
@@ -1591,7 +1743,7 @@ async def retry_processing(resume_id: str) -> ResumeUploadResponse:
             },
         )
         return ResumeUploadResponse(
-            message="Resume processing succeeded on retry",
+            message="简历重试处理成功",
             request_id=str(uuid4()),
             resume_id=resume_id,
             processing_status="ready",
@@ -1601,7 +1753,7 @@ async def retry_processing(resume_id: str) -> ResumeUploadResponse:
         logger.warning(f"Retry processing failed for resume {resume_id}: {e}")
         await db.update_resume(resume_id, {"processing_status": "failed"})
         return ResumeUploadResponse(
-            message="Retry processing failed",
+            message="重试处理失败",
             request_id=str(uuid4()),
             resume_id=resume_id,
             processing_status="failed",
@@ -1616,10 +1768,10 @@ async def update_cover_letter(
     """Update the cover letter for a resume."""
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     await db.update_resume(resume_id, {"cover_letter": request.content})
-    return {"message": "Cover letter updated successfully"}
+    return {"message": "求职信已更新"}
 
 
 @router.patch("/{resume_id}/outreach-message")
@@ -1629,10 +1781,10 @@ async def update_outreach_message(
     """Update the outreach message for a resume."""
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     await db.update_resume(resume_id, {"outreach_message": request.content})
-    return {"message": "Outreach message updated successfully"}
+    return {"message": "联系邮件已更新"}
 
 
 @router.patch("/{resume_id}/title")
@@ -1640,11 +1792,11 @@ async def update_title(resume_id: str, request: UpdateTitleRequest) -> dict:
     """Update the title for a resume."""
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     title = request.title.strip()[:80]
     await db.update_resume(resume_id, {"title": title})
-    return {"message": "Title updated successfully"}
+    return {"message": "标题已更新"}
 
 
 @router.post(
@@ -1661,14 +1813,13 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
     # Get the resume
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     # Check if it's a tailored resume (has parent_id)
     if not resume.get("parent_id"):
         raise HTTPException(
             status_code=400,
-            detail="Cover letter can only be generated for tailored resumes. "
-            "Please tailor this resume to a job description first.",
+            detail="只有定制简历才能生成求职信。请先用职位描述定制这份简历。",
         )
 
     # Get improvement record to find the job_id
@@ -1676,8 +1827,7 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
     if not improvement:
         raise HTTPException(
             status_code=400,
-            detail="No job context found for this resume. "
-            "The resume may have been created before job tracking was implemented.",
+            detail="未找到这份简历的职位上下文。它可能创建于职位追踪功能启用之前。",
         )
 
     # Get the job description
@@ -1685,7 +1835,7 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
     if not job:
         raise HTTPException(
             status_code=404,
-            detail="The associated job description was not found.",
+            detail="未找到关联的职位描述。",
         )
 
     # Get resume data
@@ -1693,7 +1843,7 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
     if not resume_data:
         raise HTTPException(
             status_code=400,
-            detail="Resume has no processed data. Please re-upload the resume.",
+            detail="简历还没有解析后的数据，请重新上传。",
         )
 
     # Get language setting
@@ -1708,7 +1858,7 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
         logger.error(f"Cover letter generation failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to generate cover letter. Please try again.",
+            detail="生成求职信失败，请重试。",
         )
 
     # Save to resume record
@@ -1716,7 +1866,7 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
 
     return GenerateContentResponse(
         content=cover_letter_content,
-        message="Cover letter generated successfully",
+        message="求职信生成成功",
     )
 
 
@@ -1732,14 +1882,13 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
     # Get the resume
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     # Check if it's a tailored resume (has parent_id)
     if not resume.get("parent_id"):
         raise HTTPException(
             status_code=400,
-            detail="Outreach message can only be generated for tailored resumes. "
-            "Please tailor this resume to a job description first.",
+            detail="只有定制简历才能生成联系邮件。请先用职位描述定制这份简历。",
         )
 
     # Get improvement record to find the job_id
@@ -1747,8 +1896,7 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
     if not improvement:
         raise HTTPException(
             status_code=400,
-            detail="No job context found for this resume. "
-            "The resume may have been created before job tracking was implemented.",
+            detail="未找到这份简历的职位上下文。它可能创建于职位追踪功能启用之前。",
         )
 
     # Get the job description
@@ -1756,7 +1904,7 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
     if not job:
         raise HTTPException(
             status_code=404,
-            detail="The associated job description was not found.",
+            detail="未找到关联的职位描述。",
         )
 
     # Get resume data
@@ -1764,7 +1912,7 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
     if not resume_data:
         raise HTTPException(
             status_code=400,
-            detail="Resume has no processed data. Please re-upload the resume.",
+            detail="简历还没有解析后的数据，请重新上传。",
         )
 
     # Get language setting
@@ -1779,7 +1927,7 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
         logger.error(f"Outreach message generation failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Failed to generate outreach message. Please try again.",
+            detail="生成联系邮件失败，请重试。",
         )
 
     # Save to resume record
@@ -1787,7 +1935,7 @@ async def generate_outreach_endpoint(resume_id: str) -> GenerateContentResponse:
 
     return GenerateContentResponse(
         content=outreach_content,
-        message="Outreach message generated successfully",
+        message="联系邮件生成成功",
     )
 
 
@@ -1801,13 +1949,13 @@ async def get_job_description_for_resume(resume_id: str) -> dict:
     # Get the resume
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     # Check if it's a tailored resume (has parent_id)
     if not resume.get("parent_id"):
         raise HTTPException(
             status_code=400,
-            detail="Job description is only available for tailored resumes.",
+            detail="只有定制简历才有关联职位描述。",
         )
 
     # Get improvement record to find the job_id
@@ -1815,8 +1963,7 @@ async def get_job_description_for_resume(resume_id: str) -> dict:
     if not improvement:
         raise HTTPException(
             status_code=400,
-            detail="No job context found for this resume. "
-            "The resume may have been created before job tracking was implemented.",
+            detail="未找到这份简历的职位上下文。它可能创建于职位追踪功能启用之前。",
         )
 
     # Get the job description
@@ -1824,7 +1971,7 @@ async def get_job_description_for_resume(resume_id: str) -> dict:
     if not job:
         raise HTTPException(
             status_code=404,
-            detail="The associated job description was not found.",
+            detail="未找到关联的职位描述。",
         )
 
     return {
@@ -1848,12 +1995,12 @@ async def download_cover_letter_pdf(
     """
     resume = await db.get_resume(resume_id)
     if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+        raise HTTPException(status_code=404, detail="未找到简历。")
 
     cover_letter = resume.get("cover_letter")
     if not cover_letter:
         raise HTTPException(
-            status_code=404, detail="No cover letter found for this resume"
+            status_code=404, detail="该简历还没有求职信。"
         )
 
     # Build print URL (same pattern as resume PDF)

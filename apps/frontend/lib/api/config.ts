@@ -67,7 +67,7 @@ export async function fetchLlmConfig(): Promise<LLMConfig> {
   const res = await apiFetch('/config/llm-api-key', { credentials: 'include' });
 
   if (!res.ok) {
-    throw new Error(`Failed to load LLM config (status ${res.status}).`);
+    throw new Error(`加载模型配置失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -90,7 +90,7 @@ export async function updateLlmConfig(config: LLMConfigUpdate): Promise<LLMConfi
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to update LLM config (status ${res.status}).`);
+    throw new Error(data.detail || `更新模型配置失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -118,7 +118,7 @@ export async function testLlmConnection(config?: LLMConfigUpdate): Promise<LLMHe
   const res = await apiFetch('/config/llm-test', options);
 
   if (!res.ok) {
-    throw new Error(`Failed to test LLM connection (status ${res.status}).`);
+    throw new Error(`测试模型连接失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -129,7 +129,7 @@ export async function fetchSystemStatus(): Promise<SystemStatus> {
   const res = await apiFetch('/status', { credentials: 'include' });
 
   if (!res.ok) {
-    throw new Error(`Failed to fetch system status (status ${res.status}).`);
+    throw new Error(`获取系统状态失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -145,7 +145,7 @@ export const PROVIDER_INFO: Record<
   // the OpenAI Chat Completions API. Key is optional (most local servers don't
   // require auth); backend passes a sentinel when blank.
   openai_compatible: {
-    name: 'OpenAI-Compatible (Local)',
+    name: 'OpenAI 兼容（本地）',
     defaultModel: 'custom-model',
     requiresKey: false,
   },
@@ -158,7 +158,7 @@ export const PROVIDER_INFO: Record<
   gemini: { name: 'Google Gemini', defaultModel: 'gemini-3-flash-preview', requiresKey: true },
   deepseek: { name: 'DeepSeek', defaultModel: 'deepseek-chat', requiresKey: true },
   groq: { name: 'Groq', defaultModel: 'llama-3.3-70b-versatile', requiresKey: true },
-  ollama: { name: 'Ollama (Local)', defaultModel: 'gemma3:4b', requiresKey: false },
+  ollama: { name: 'Ollama（本地）', defaultModel: 'gemma3:4b', requiresKey: false },
 };
 
 // Feature configuration types
@@ -177,7 +177,7 @@ export async function fetchFeatureConfig(): Promise<FeatureConfig> {
   const res = await apiFetch('/config/features', { credentials: 'include' });
 
   if (!res.ok) {
-    throw new Error(`Failed to load feature config (status ${res.status}).`);
+    throw new Error(`加载功能配置失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -194,7 +194,7 @@ export async function updateFeatureConfig(config: FeatureConfigUpdate): Promise<
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to update feature config (status ${res.status}).`);
+    throw new Error(data.detail || `更新功能配置失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -219,7 +219,7 @@ export async function fetchLanguageConfig(): Promise<LanguageConfig> {
   const res = await apiFetch('/config/language', { credentials: 'include' });
 
   if (!res.ok) {
-    throw new Error(`Failed to load language config (status ${res.status}).`);
+    throw new Error(`加载语言配置失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -236,7 +236,7 @@ export async function updateLanguageConfig(update: LanguageConfigUpdate): Promis
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to update language config (status ${res.status}).`);
+    throw new Error(data.detail || `更新语言配置失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -262,7 +262,7 @@ export async function fetchPromptConfig(): Promise<PromptConfig> {
   const res = await apiFetch('/config/prompts', { credentials: 'include' });
 
   if (!res.ok) {
-    throw new Error(`Failed to load prompt config (status ${res.status}).`);
+    throw new Error(`加载提示词配置失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -279,7 +279,7 @@ export async function updatePromptConfig(update: PromptConfigUpdate): Promise<Pr
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to update prompt config (status ${res.status}).`);
+    throw new Error(data.detail || `更新提示词配置失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -311,7 +311,7 @@ export class FeaturePromptsError extends Error {
   detail: FeaturePromptsValidationError;
 
   constructor(detail: FeaturePromptsValidationError) {
-    super(`Invalid ${detail.field}: missing ${detail.missing.join(', ')}`);
+    super(`${detail.field} 无效，缺少占位符：${detail.missing.join(', ')}`);
     this.name = 'FeaturePromptsError';
     this.detail = detail;
   }
@@ -320,7 +320,7 @@ export class FeaturePromptsError extends Error {
 export async function fetchFeaturePrompts(): Promise<FeaturePrompts> {
   const res = await apiFetch('/config/feature-prompts', { credentials: 'include' });
   if (!res.ok) {
-    throw new Error(`Failed to load feature prompts (status ${res.status}).`);
+    throw new Error(`加载功能提示词失败（状态码 ${res.status}）。`);
   }
   return res.json();
 }
@@ -356,7 +356,7 @@ export async function updateFeaturePrompts(update: FeaturePromptsUpdate): Promis
     } else if (errBody.detail) {
       message = JSON.stringify(errBody.detail);
     } else {
-      message = `Failed to update feature prompts (status ${res.status}).`;
+      message = `更新功能提示词失败（状态码 ${res.status}）。`;
     }
     throw new Error(message);
   }
@@ -416,14 +416,14 @@ export interface ApiKeysUpdateResponse {
 // Provider display names for API keys
 export const API_KEY_PROVIDER_INFO: Record<ApiKeyProvider, { name: string; description: string }> =
   {
-    openai: { name: 'OpenAI', description: 'GPT-4, GPT-4o, etc.' },
-    anthropic: { name: 'Anthropic', description: 'Claude 3.5, Claude 4, etc.' },
-    google: { name: 'Google', description: 'Gemini 1.5, Gemini 2, etc.' },
-    openrouter: { name: 'OpenRouter', description: 'Access multiple providers' },
-    deepseek: { name: 'DeepSeek', description: 'DeepSeek chat models' },
-    groq: { name: 'Groq', description: 'Llama, Mixtral, Gemma on Groq' },
-    openai_compatible: { name: 'OpenAI-Compatible', description: 'Self-hosted / proxy endpoints' },
-    ollama: { name: 'Ollama', description: 'Local Ollama server' },
+    openai: { name: 'OpenAI', description: 'GPT-4、GPT-4o 等模型' },
+    anthropic: { name: 'Anthropic', description: 'Claude 3.5、Claude 4 等模型' },
+    google: { name: 'Google', description: 'Gemini 1.5、Gemini 2 等模型' },
+    openrouter: { name: 'OpenRouter', description: '接入多个模型提供商' },
+    deepseek: { name: 'DeepSeek', description: 'DeepSeek 聊天模型' },
+    groq: { name: 'Groq', description: 'Groq 上的 Llama、Mixtral、Gemma 模型' },
+    openai_compatible: { name: 'OpenAI 兼容', description: '自托管或代理接口' },
+    ollama: { name: 'Ollama', description: '本地 Ollama 服务' },
   };
 
 // Fetch API key status for all providers
@@ -431,7 +431,7 @@ export async function fetchApiKeyStatus(): Promise<ApiKeyStatusResponse> {
   const res = await apiFetch('/config/api-keys', { credentials: 'include' });
 
   if (!res.ok) {
-    throw new Error(`Failed to load API key status (status ${res.status}).`);
+    throw new Error(`加载 API 密钥状态失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -448,7 +448,7 @@ export async function updateApiKeys(keys: ApiKeysUpdateRequest): Promise<ApiKeys
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to update API keys (status ${res.status}).`);
+    throw new Error(data.detail || `更新 API 密钥失败（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -463,7 +463,7 @@ export async function deleteApiKey(provider: ApiKeyProvider): Promise<void> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to delete API key (status ${res.status}).`);
+    throw new Error(data.detail || `删除 API 密钥失败（状态码 ${res.status}）。`);
   }
 }
 
@@ -476,7 +476,7 @@ export async function clearAllApiKeys(): Promise<void> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to clear API keys (status ${res.status}).`);
+    throw new Error(data.detail || `清除 API 密钥失败（状态码 ${res.status}）。`);
   }
 }
 
@@ -491,6 +491,6 @@ export async function resetDatabase(): Promise<void> {
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to reset database (status ${res.status}).`);
+    throw new Error(data.detail || `重置数据库失败（状态码 ${res.status}）。`);
   }
 }

@@ -90,7 +90,7 @@ interface ImproveResumeConfirmRequest {
 function normalizeResumeId(resumeId: string): string {
   const normalized = resumeId.trim();
   if (!normalized) {
-    throw new Error('Resume ID is required.');
+    throw new Error('缺少简历 ID。');
   }
   return normalized;
 }
@@ -125,7 +125,7 @@ async function postImprove(
   const text = await response.text();
   if (!response.ok) {
     console.error('Improve failed response body:', text);
-    throw new Error(`Improve failed with status ${response.status}: ${text}`);
+    throw new Error(`定制简历失败（状态码 ${response.status}）：${text}`);
   }
 
   try {
@@ -145,7 +145,7 @@ export async function uploadJobDescriptions(
     job_descriptions: descriptions,
     resume_id: resumeId,
   });
-  if (!res.ok) throw new Error(`Upload failed with status ${res.status}`);
+  if (!res.ok) throw new Error(`上传职位描述失败（状态码 ${res.status}）。`);
   const data = await res.json();
   return data.job_id[0];
 }
@@ -187,7 +187,7 @@ export async function confirmImproveResume(
 export async function fetchResume(resumeId: string): Promise<ResumeResponse['data']> {
   const res = await apiFetch(`/resumes?resume_id=${encodeURIComponent(resumeId)}`);
   if (!res.ok) {
-    throw new Error(`Failed to load resume (status ${res.status}).`);
+    throw new Error(`加载简历失败（状态码 ${res.status}）。`);
   }
   const payload = (await res.json()) as ResumeResponse;
   // Support both raw_resume content (initial) and processed_resume (if available)
@@ -198,7 +198,7 @@ export async function fetchResume(resumeId: string): Promise<ResumeResponse['dat
 export async function fetchResumeList(includeMaster = false): Promise<ResumeListItem[]> {
   const res = await apiFetch(`/resumes/list?include_master=${includeMaster ? 'true' : 'false'}`);
   if (!res.ok) {
-    throw new Error(`Failed to load resumes list (status ${res.status}).`);
+    throw new Error(`加载简历列表失败（状态码 ${res.status}）。`);
   }
   const payload = (await res.json()) as { data: ResumeListItem[] };
   return payload.data;
@@ -211,7 +211,7 @@ export async function updateResume(
   const res = await apiPatch(`/resumes/${encodeURIComponent(resumeId)}`, resumeData);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to update resume (status ${res.status}): ${text}`);
+    throw new Error(`更新简历失败（状态码 ${res.status}）：${text}`);
   }
   const payload = (await res.json()) as ResumeResponse;
   return payload.data;
@@ -262,7 +262,7 @@ export async function downloadResumePdf(
   const res = await apiFetch(url);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to download resume (status ${res.status}): ${text}`);
+    throw new Error(`下载简历失败（状态码 ${res.status}）：${text}`);
   }
   return await res.blob();
 }
@@ -272,7 +272,7 @@ export async function deleteResume(resumeId: string): Promise<void> {
   const res = await apiDelete(`/resumes/${encodeURIComponent(resumeId)}`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to delete resume (status ${res.status}): ${text}`);
+    throw new Error(`删除简历失败（状态码 ${res.status}）：${text}`);
   }
 }
 
@@ -281,7 +281,7 @@ export async function updateCoverLetter(resumeId: string, content: string): Prom
   const res = await apiPatch(`/resumes/${encodeURIComponent(resumeId)}/cover-letter`, { content });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to update cover letter (status ${res.status}): ${text}`);
+    throw new Error(`更新求职信失败（状态码 ${res.status}）：${text}`);
   }
 }
 
@@ -292,7 +292,7 @@ export async function updateOutreachMessage(resumeId: string, content: string): 
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to update outreach message (status ${res.status}): ${text}`);
+    throw new Error(`更新联系邮件失败（状态码 ${res.status}）：${text}`);
   }
 }
 
@@ -301,7 +301,7 @@ export async function renameResume(resumeId: string, title: string): Promise<voi
   const res = await apiPatch(`/resumes/${encodeURIComponent(resumeId)}/title`, { title });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to rename resume (status ${res.status}): ${text}`);
+    throw new Error(`重命名简历失败（状态码 ${res.status}）：${text}`);
   }
 }
 
@@ -328,7 +328,7 @@ export async function downloadCoverLetterPdf(
   const res = await apiFetch(url);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to download cover letter (status ${res.status}): ${text}`);
+    throw new Error(`下载求职信失败（状态码 ${res.status}）：${text}`);
   }
   return await res.blob();
 }
@@ -338,7 +338,7 @@ export async function generateCoverLetter(resumeId: string): Promise<string> {
   const res = await apiPost(`/resumes/${encodeURIComponent(resumeId)}/generate-cover-letter`, {});
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to generate cover letter (status ${res.status}): ${text}`);
+    throw new Error(`生成求职信失败（状态码 ${res.status}）：${text}`);
   }
   const data = await res.json();
   return data.content;
@@ -349,7 +349,7 @@ export async function generateOutreachMessage(resumeId: string): Promise<string>
   const res = await apiPost(`/resumes/${encodeURIComponent(resumeId)}/generate-outreach`, {});
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to generate outreach message (status ${res.status}): ${text}`);
+    throw new Error(`生成联系邮件失败（状态码 ${res.status}）：${text}`);
   }
   const data = await res.json();
   return data.content;
@@ -360,7 +360,7 @@ export async function retryProcessing(resumeId: string): Promise<ResumeUploadRes
   const res = await apiPost(`/resumes/${encodeURIComponent(resumeId)}/retry-processing`, {});
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to retry processing (status ${res.status}): ${text}`);
+    throw new Error(`重试处理失败（状态码 ${res.status}）：${text}`);
   }
   return res.json();
 }
@@ -372,7 +372,7 @@ export async function fetchJobDescription(
   const res = await apiFetch(`/resumes/${encodeURIComponent(resumeId)}/job-description`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Failed to fetch job description (status ${res.status}): ${text}`);
+    throw new Error(`获取职位描述失败（状态码 ${res.status}）：${text}`);
   }
   return res.json();
 }

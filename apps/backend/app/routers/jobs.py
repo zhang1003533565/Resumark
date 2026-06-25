@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from app.database import db
 from app.schemas import JobUploadRequest, JobUploadResponse
 
-router = APIRouter(prefix="/jobs", tags=["Jobs"])
+router = APIRouter(prefix="/jobs", tags=["职位描述"])
 
 
 @router.post("/upload", response_model=JobUploadResponse)
@@ -16,12 +16,12 @@ async def upload_job_descriptions(request: JobUploadRequest) -> JobUploadRespons
     Returns an array of job_ids corresponding to the input array.
     """
     if not request.job_descriptions:
-        raise HTTPException(status_code=400, detail="No job descriptions provided")
+        raise HTTPException(status_code=400, detail="请先填写职位描述。")
 
     job_ids = []
     for jd in request.job_descriptions:
         if not jd.strip():
-            raise HTTPException(status_code=400, detail="Empty job description")
+            raise HTTPException(status_code=400, detail="职位描述不能为空。")
 
         job = await db.create_job(
             content=jd.strip(),
@@ -30,7 +30,7 @@ async def upload_job_descriptions(request: JobUploadRequest) -> JobUploadRespons
         job_ids.append(job["job_id"])
 
     return JobUploadResponse(
-        message="data successfully processed",
+        message="职位描述已处理",
         job_id=job_ids,
         request={
             "job_descriptions": request.job_descriptions,
@@ -45,6 +45,6 @@ async def get_job(job_id: str) -> dict:
     job = await db.get_job(job_id)
 
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="未找到职位描述。")
 
     return job

@@ -119,7 +119,7 @@ export async function postResumeWizardTurn(
   const response = await apiPost('/resume-wizard/turn', payload);
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(text || `Resume wizard turn failed with status ${response.status}`);
+    throw new Error(text || `简历向导暂时无法继续（状态码 ${response.status}）。`);
   }
   return response.json();
 }
@@ -130,7 +130,7 @@ export async function finalizeResumeWizard(
   const response = await apiPost('/resume-wizard/finalize', { state });
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(text || `Resume wizard finalize failed with status ${response.status}`);
+    throw new Error(text || `创建主简历失败（状态码 ${response.status}）。`);
   }
   return response.json();
 }

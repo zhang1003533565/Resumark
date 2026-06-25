@@ -57,7 +57,7 @@ export async function analyzeResume(resumeId: string): Promise<AnalysisResponse>
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to analyze resume (status ${res.status}).`);
+    throw new Error(data.detail || `无法分析简历（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -77,7 +77,7 @@ export async function generateEnhancements(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to generate enhancements (status ${res.status}).`);
+    throw new Error(data.detail || `无法生成增强内容（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -96,7 +96,7 @@ export async function applyEnhancements(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to apply enhancements (status ${res.status}).`);
+    throw new Error(data.detail || `无法应用增强内容（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -153,7 +153,7 @@ export async function regenerateItems(request: RegenerateRequest): Promise<Regen
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to regenerate content (status ${res.status}).`);
+    throw new Error(data.detail || `无法重新生成内容（状态码 ${res.status}）。`);
   }
 
   return res.json();
@@ -170,7 +170,7 @@ export async function applyRegeneratedItems(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || `Failed to apply changes (status ${res.status}).`);
+    throw new Error(data.detail || `无法应用变更（状态码 ${res.status}）。`);
   }
 
   return res.json();

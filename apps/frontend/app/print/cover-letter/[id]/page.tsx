@@ -42,7 +42,7 @@ async function fetchCoverLetterData(resumeId: string): Promise<CoverLetterData> 
     cache: 'no-store',
   });
   if (!res.ok) {
-    throw new Error(`Failed to load resume (status ${res.status}).`);
+    throw new Error(`加载简历失败（状态码 ${res.status}）。`);
   }
   const payload = (await res.json()) as {
     data: {

@@ -1487,7 +1487,7 @@ def generate_improvements(job_keywords: dict[str, Any]) -> list[dict[str, Any]]:
     for skill in required_skills[:3]:  # Top 3 required skills
         improvements.append(
             {
-                "suggestion": f"Emphasized '{skill}' to match job requirements",
+                "suggestion": f"突出「{skill}」以匹配职位要求",
                 "lineNumber": None,
             }
         )
@@ -1497,7 +1497,7 @@ def generate_improvements(job_keywords: dict[str, Any]) -> list[dict[str, Any]]:
     for resp in responsibilities[:2]:  # Top 2 responsibilities
         improvements.append(
             {
-                "suggestion": f"Aligned experience with: {resp}",
+                "suggestion": f"将经历表述对齐到职位职责：{resp}",
                 "lineNumber": None,
             }
         )
@@ -1506,7 +1506,7 @@ def generate_improvements(job_keywords: dict[str, Any]) -> list[dict[str, Any]]:
     if not improvements:
         improvements.append(
             {
-                "suggestion": "Resume content optimized for better keyword alignment with job description",
+                "suggestion": "已围绕职位描述检查简历关键词匹配度",
                 "lineNumber": None,
             }
         )

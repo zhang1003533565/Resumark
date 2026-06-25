@@ -65,10 +65,10 @@ export type FileUploadActions = {
 };
 
 export const formatBytes = (bytes: number, decimals = 2): string => {
-  if (bytes === 0) return '0 Bytes';
+  if (bytes === 0) return '0 字节';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const sizes = ['字节', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / k ** i).toFixed(dm))} ${sizes[i]}`;
 };
@@ -126,7 +126,7 @@ export const useFileUpload = (
     (file: File): string | null => {
       // Simplified: always validates a File object
       if (file.size > maxSize) {
-        return `File "${file.name}" exceeds the maximum size of ${formatBytes(maxSize)}.`;
+        return `文件“${file.name}”超过最大限制 ${formatBytes(maxSize)}。`;
       }
 
       if (accept !== '*/*' && accept !== '*') {
@@ -149,7 +149,7 @@ export const useFileUpload = (
         });
 
         if (!isAccepted) {
-          return `File "${file.name}" type not accepted. Accepted types: ${accept}`;
+          return `不支持文件“${file.name}”的类型。支持的类型：${accept}`;
         }
       }
       return null;
@@ -172,7 +172,7 @@ export const useFileUpload = (
     async (fileToUpload: FileWithPreview) => {
       // Ensure fileToUpload.file is a File instance for upload
       if (!(fileToUpload.file instanceof File)) {
-        const errorMsg = `Cannot upload "${(fileToUpload.file as FileMetadata).name}"; it's not a valid file object for direct upload.`;
+        const errorMsg = `无法上传“${(fileToUpload.file as FileMetadata).name}”，它不是可直接上传的有效文件。`;
         console.error(errorMsg, fileToUpload);
         // Update this specific file's metadata with an error
         const updatedFileWithMetaError: FileWithPreview = {
@@ -195,7 +195,7 @@ export const useFileUpload = (
       }
 
       if (!uploadUrl) {
-        const errorMsg = 'Upload URL is not configured.';
+        const errorMsg = '未配置上传地址。';
         console.warn(errorMsg, 'File not uploaded:', fileToUpload.file.name);
         // Update file metadata to reflect it wasn't uploaded due to config
         const fileWithConfigError: FileWithPreview = {
@@ -235,10 +235,10 @@ export const useFileUpload = (
         const contentType = response.headers.get('content-type');
 
         if (!response.ok) {
-          let errorDetail = `Upload failed for ${fileToUpload.file.name}. Status: ${response.status} ${response.statusText}`;
+          let errorDetail = `上传“${fileToUpload.file.name}”失败。状态码：${response.status}`;
           try {
             const errorText = await response.text();
-            errorDetail += ` - Server response: ${errorText.substring(0, 200)}${errorText.length > 200 ? '...' : ''}`;
+            errorDetail += `。服务器响应：${errorText.substring(0, 200)}${errorText.length > 200 ? '...' : ''}`;
           } catch (textError: unknown) {
             console.warn('Could not read error response text:', textError);
           }
@@ -287,7 +287,7 @@ export const useFileUpload = (
         const errorMessage =
           error instanceof Error
             ? error.message
-            : `Error uploading ${(fileToUpload.file as File).name}.`;
+            : `上传“${(fileToUpload.file as File).name}”时出错。`;
         const fileWithError: FileWithPreview = {
           ...fileToUpload,
           file: {
@@ -341,7 +341,7 @@ export const useFileUpload = (
       }
 
       if (!multiple && newFilesArray.length > 1) {
-        currentValidationErrors.push('Please select only one file.');
+        currentValidationErrors.push('请只选择一个文件。');
         setState((prev) => ({ ...prev, errors: currentValidationErrors }));
         if (inputRef.current) inputRef.current.value = '';
         return;
@@ -352,7 +352,7 @@ export const useFileUpload = (
         maxFiles !== Infinity &&
         state.files.length + newFilesArray.length > maxFiles
       ) {
-        currentValidationErrors.push(`You can only upload a maximum of ${maxFiles} files.`);
+        currentValidationErrors.push(`最多只能上传 ${maxFiles} 个文件。`);
         setState((prev) => ({ ...prev, errors: [...prev.errors, ...currentValidationErrors] }));
         if (inputRef.current) inputRef.current.value = '';
         return;
@@ -425,7 +425,7 @@ export const useFileUpload = (
               id: fwp.id,
               url: fwp.preview || '', // Use preview as URL if no upload
               uploaded: false, // Not uploaded
-              uploadError: 'Upload URL not configured',
+              uploadError: '未配置上传地址。',
             } as FileMetadata,
           }));
 

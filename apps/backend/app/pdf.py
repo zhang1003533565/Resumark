@@ -129,8 +129,8 @@ async def _launch_browser(playwright: Playwright) -> Browser:
         fallback_executable = _find_chromium_executable()
         if not fallback_executable:
             raise PDFRenderError(
-                "Playwright browser executable is missing, and no system Chrome/Edge "
-                "installation was found. Install Playwright browsers or install Chrome/Edge."
+                "缺少 Playwright 浏览器可执行文件，也没有找到系统 Chrome/Edge。"
+                "请安装 Playwright 浏览器，或安装 Chrome/Edge。"
             ) from e
         return await playwright.chromium.launch(executable_path=fallback_executable)
 
@@ -232,17 +232,16 @@ def _raise_playwright_error(error: PlaywrightError, url: str) -> NoReturn:
         exe = sys.executable.replace("\\", "/")
         command = f"{exe} -m playwright install chromium"
         raise PDFRenderError(
-            "Playwright browser executable is missing or out of date. "
-            "Command shown for reference; quote the path if it contains spaces: "
+            "Playwright 浏览器可执行文件缺失或版本过旧。"
+            "可参考以下命令安装；如果路径包含空格，请给路径加引号："
             f"{command}"
         ) from error
     if "net::ERR_CONNECTION_REFUSED" in error_msg:
         raise PDFRenderError(
-            f"Cannot connect to frontend for PDF generation. "
-            f"Attempted URL: {url}. "
-            f"Please ensure: 1) The frontend is running, "
-            f"2) The FRONTEND_BASE_URL environment variable in the backend .env file "
-            f"matches the URL where your frontend is accessible."
+            f"PDF 生成时无法连接前端。"
+            f"尝试访问的地址：{url}。"
+            f"请确认：1）前端服务正在运行；"
+            f"2）后端 .env 中的 FRONTEND_BASE_URL 与前端可访问地址一致。"
         ) from error
     # Catch-all: the raw Playwright message can carry internal navigation URLs
     # and a full call log. Log it server-side; return a generic message to the
@@ -250,8 +249,7 @@ def _raise_playwright_error(error: PlaywrightError, url: str) -> NoReturn:
     # the client error modal, #811).
     logger.error("PDF rendering failed for %s: %s", url, error_msg)
     raise PDFRenderError(
-        "PDF rendering failed. Please try again, or try a simpler resume or a "
-        "different template."
+        "PDF 渲染失败。请重试，或尝试更简单的简历内容/其他模板。"
     ) from error
 
 
@@ -330,7 +328,7 @@ async def render_resume_pdf(
             _raise_playwright_error(e, url)
 
     if _browser is None:
-        raise PDFRenderError("PDF renderer failed to initialize.")
+        raise PDFRenderError("PDF 渲染器初始化失败。")
 
     try:
         return await _render_with_browser(_browser, url, selector, pdf_format, pdf_margins)

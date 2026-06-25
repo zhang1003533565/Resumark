@@ -2,6 +2,7 @@
 
 import copy
 import json
+import logging
 import re
 from collections.abc import Callable
 from typing import Any
@@ -24,6 +25,8 @@ from app.schemas.resume_wizard import (
     ResumeWizardQuestion,
     ResumeWizardState,
 )
+
+logger = logging.getLogger(__name__)
 
 RESUME_WIZARD_MAX_QUESTIONS = 15
 _PROGRESS_BASELINE = 8
@@ -76,6 +79,23 @@ _INTRO_NAME_PATTERNS = (
 )
 _LATIN_RE = re.compile(r"[A-Za-z]")
 _HAN_RE = re.compile(r"[\u4e00-\u9fff]")
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_PHONE_RE = re.compile(r"(?:\+?\d[\d\s().-]{6,}\d)")
+_URL_RE = re.compile(r"https?://[^\s，,；;]+")
+_CHINESE_NAME_RE = re.compile(
+    r"(?:我叫|我是|姓名是|名字是)\s*([\u4e00-\u9fff·]{2,8}|[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)"
+)
+_SKILL_SPLIT_RE = re.compile(r"[,，;；、/\n]+")
+_FALLBACK_SEQUENCE = [
+    "intro",
+    "contact",
+    "summary",
+    "workExperience",
+    "education",
+    "personalProjects",
+    "skills",
+    "review",
+]
 
 
 def section_prompt(section: str) -> str:
@@ -108,6 +128,14 @@ def build_initial_wizard_state() -> ResumeWizardState:
 
 def extract_intro_name(answer: str) -> str:
     """Extract a likely user name from the intro answer."""
+    chinese_match = _CHINESE_NAME_RE.search(answer)
+    if chinese_match:
+        return chinese_match.group(1).strip().rstrip("。.")
+
+    prefix = re.split(r"[,，。；;\n]", answer.strip(), maxsplit=1)[0].strip()
+    if 2 <= len(prefix) <= 8 and re.fullmatch(r"[\u4e00-\u9fff·]+", prefix):
+        return prefix
+
     for pattern in _INTRO_NAME_PATTERNS:
         match = pattern.search(answer)
         if match:
@@ -187,6 +215,157 @@ def _next_gap_section(data: ResumeData) -> str:
     if not data.additional.technicalSkills:
         return "skills"
     return "review"
+
+
+def _has_contact(info: Any) -> bool:
+    return any(
+        (value or "").strip()
+        for value in (
+            info.email,
+            info.phone,
+            info.linkedin or "",
+            info.github or "",
+            info.website or "",
+        )
+    )
+
+
+def _section_has_content(data: ResumeData, section: str) -> bool:
+    if section == "intro":
+        return bool(data.personalInfo.name.strip())
+    if section == "contact":
+        return _has_contact(data.personalInfo)
+    if section == "summary":
+        return bool(data.summary.strip())
+    if section in {"workExperience", "internships"}:
+        return bool(data.workExperience)
+    if section == "education":
+        return bool(data.education)
+    if section == "personalProjects":
+        return bool(data.personalProjects)
+    if section == "skills":
+        return bool(data.additional.technicalSkills)
+    return True
+
+
+def _fallback_next_section(current_section: str, data: ResumeData) -> str:
+    """Pick a deterministic next section when the LLM is unavailable."""
+    try:
+        start = _FALLBACK_SEQUENCE.index(current_section) + 1
+    except ValueError:
+        start = 0
+    for section in _FALLBACK_SEQUENCE[start:]:
+        if not _section_has_content(data, section):
+            return section
+    for section in _FALLBACK_SEQUENCE:
+        if not _section_has_content(data, section):
+            return section
+    return "review"
+
+
+def _split_skills(answer_text: str) -> list[str]:
+    parts = [part.strip(" .。") for part in _SKILL_SPLIT_RE.split(answer_text)]
+    return [part for part in parts if part]
+
+
+def _apply_local_answer(data: ResumeData, section: str, answer_text: str) -> ResumeData:
+    """Best-effort local draft update used only when the LLM call fails."""
+    answer = answer_text.strip()
+    if not answer:
+        return data
+
+    updated = data.model_copy(deep=True)
+    if section == "intro":
+        name = extract_intro_name(answer)
+        if name:
+            updated.personalInfo.name = name
+        elif not updated.summary.strip():
+            updated.summary = answer
+        return updated
+
+    if section == "contact":
+        if match := _EMAIL_RE.search(answer):
+            updated.personalInfo.email = match.group(0)
+        if match := _PHONE_RE.search(answer):
+            updated.personalInfo.phone = match.group(0).strip()
+        for url in _URL_RE.findall(answer):
+            lowered = url.lower()
+            if "linkedin.com" in lowered:
+                updated.personalInfo.linkedin = url
+            elif "github.com" in lowered:
+                updated.personalInfo.github = url
+            elif not updated.personalInfo.website:
+                updated.personalInfo.website = url
+        return updated
+
+    if section == "summary":
+        updated.summary = answer
+        return updated
+
+    if section in {"workExperience", "internships"}:
+        updated.workExperience.append(Experience(description=[answer]))
+        return updated
+
+    if section == "education":
+        updated.education.append(Education(description=answer))
+        return updated
+
+    if section == "personalProjects":
+        updated.personalProjects.append(Project(name="项目经历", description=[answer]))
+        return updated
+
+    if section == "skills":
+        updated.additional.technicalSkills = merge_unique_skills(
+            updated.additional.technicalSkills, _split_skills(answer)
+        )
+        return updated
+
+    return updated
+
+
+def _is_solid_draft(data: ResumeData) -> bool:
+    return bool(
+        data.personalInfo.name.strip()
+        and (data.workExperience or data.personalProjects)
+        and data.additional.technicalSkills
+    )
+
+
+def _fallback_turn(state: ResumeWizardState, answer_text: str, *, skip: bool) -> ResumeWizardState:
+    """Continue the wizard without failing when the LLM provider is unavailable."""
+    section = state.current_question.section
+    data = state.resume_data.model_copy(deep=True)
+    if not skip:
+        data = _apply_local_answer(data, section, answer_text)
+    _assign_entry_ids(data)
+
+    asked_count = state.asked_count + 1
+    next_section = _fallback_next_section(section, data)
+    is_complete = _is_solid_draft(data) or asked_count >= RESUME_WIZARD_MAX_QUESTIONS
+    history = list(state.history)
+    history.append(
+        ResumeWizardHistoryEntry(
+            question=state.current_question.text,
+            answer="" if skip else answer_text,
+            section=section,
+            resume_data_before=state.resume_data,
+        )
+    )
+
+    return ResumeWizardState(
+        step="question",
+        resume_data=data,
+        current_question=ResumeWizardQuestion(
+            text=section_prompt(next_section),
+            section=next_section,
+        ),
+        history=history,
+        asked_count=asked_count,
+        inferred_skills=[],
+        is_complete=is_complete,
+        progress=compute_progress(asked_count, is_complete),
+        warnings=[],
+    )
 
 
 def _merge_entries[T](
@@ -370,9 +549,16 @@ async def run_ai_turn(
         resume_json=resume_json,
         answer_text=prompt_answer,
     )
-    result = await complete_json(prompt, max_tokens=8192, schema_type="resume")
-    if not isinstance(result, dict):
-        raise ValueError("Resume wizard LLM response must be a JSON object.")
+    try:
+        result = await complete_json(prompt, max_tokens=8192, schema_type="resume")
+        if not isinstance(result, dict):
+            raise ValueError("Resume wizard LLM response must be a JSON object.")
+    except Exception as e:
+        logger.warning(
+            "Resume wizard AI turn failed; using deterministic fallback: %s",
+            e,
+        )
+        return _fallback_turn(state, answer_text, skip=skip)
 
     raw_resume = result.get("resume_data")
     inferred = _string_list(result.get("inferred_skills"))

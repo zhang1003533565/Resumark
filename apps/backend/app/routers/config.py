@@ -287,7 +287,7 @@ async def update_language_config(
         if request.ui_language not in SUPPORTED_LANGUAGES:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported UI language: {request.ui_language}. Supported: {SUPPORTED_LANGUAGES}",
+                detail=f"不支持的界面语言：{request.ui_language}。支持：{SUPPORTED_LANGUAGES}",
             )
         stored["ui_language"] = request.ui_language
 
@@ -296,7 +296,7 @@ async def update_language_config(
         if request.content_language not in SUPPORTED_LANGUAGES:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported content language: {request.content_language}. Supported: {SUPPORTED_LANGUAGES}",
+                detail=f"不支持的内容语言：{request.content_language}。支持：{SUPPORTED_LANGUAGES}",
             )
         stored["content_language"] = request.content_language
 
@@ -343,8 +343,8 @@ async def update_prompt_config(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Unsupported prompt id: "
-                    f"{request.default_prompt_id}. Supported: {sorted(option_ids)}"
+                    "不支持的提示词 ID："
+                    f"{request.default_prompt_id}。支持：{sorted(option_ids)}"
                 ),
             )
         stored["default_prompt_id"] = request.default_prompt_id
@@ -551,7 +551,7 @@ async def update_api_keys(request: ApiKeysUpdateRequest) -> ApiKeysUpdateRespons
     invalidate_config_cache()
 
     return ApiKeysUpdateResponse(
-        message=f"Updated {len(updated)} API key(s)",
+        message=f"已更新 {len(updated)} 个 API 密钥",
         updated_providers=updated,
     )
 
@@ -575,11 +575,11 @@ async def delete_all_api_keys(confirm: str | None = None) -> dict:
     if confirm != "CLEAR_ALL_KEYS":
         raise HTTPException(
             status_code=400,
-            detail="Confirmation required. Pass confirm=CLEAR_ALL_KEYS query parameter.",
+            detail="需要确认。请传入 confirm=CLEAR_ALL_KEYS 查询参数。",
         )
     clear_all_api_keys()
     invalidate_config_cache()
-    return {"message": "All API keys have been cleared"}
+    return {"message": "所有 API 密钥已清除"}
 
 
 @router.delete("/api-keys/{provider}")
@@ -595,13 +595,13 @@ async def delete_api_key(provider: str) -> dict:
     if provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported provider: {provider}. Supported: {SUPPORTED_PROVIDERS}",
+            detail=f"不支持的提供商：{provider}。支持：{SUPPORTED_PROVIDERS}",
         )
 
     delete_api_key_from_config(provider)
     invalidate_config_cache()
 
-    return {"message": f"API key for {provider} has been removed"}
+    return {"message": f"{provider} 的 API 密钥已删除"}
 
 
 @router.post("/reset")
@@ -627,7 +627,7 @@ async def reset_database_endpoint(request: ResetDatabaseRequest) -> dict:
     if request.confirm != "RESET_ALL_DATA":
         raise HTTPException(
             status_code=400,
-            detail="Confirmation required. Pass confirm=RESET_ALL_DATA in request body.",
+            detail="需要确认。请在请求体中传入 confirm=RESET_ALL_DATA。",
         )
     await db.reset_database()
-    return {"message": "Database and all data have been reset successfully"}
+    return {"message": "数据库和所有数据已重置"}

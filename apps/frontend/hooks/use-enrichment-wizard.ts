@@ -193,7 +193,7 @@ export function useEnrichmentWizard(resumeId: string) {
     } catch (error) {
       dispatch({
         type: 'SET_ERROR',
-        error: error instanceof Error ? error.message : 'Failed to analyze resume',
+        error: error instanceof Error ? error.message : '分析简历失败，请重试。',
       });
     }
   }, [resumeId]);
@@ -238,7 +238,7 @@ export function useEnrichmentWizard(resumeId: string) {
     } catch (error) {
       dispatch({
         type: 'SET_ERROR',
-        error: error instanceof Error ? error.message : 'Failed to generate enhancements',
+        error: error instanceof Error ? error.message : '生成增强内容失败，请重试。',
       });
     }
   }, [resumeId, state.answers]);
@@ -253,7 +253,7 @@ export function useEnrichmentWizard(resumeId: string) {
     } catch (error) {
       dispatch({
         type: 'SET_ERROR',
-        error: error instanceof Error ? error.message : 'Failed to apply enhancements',
+        error: error instanceof Error ? error.message : '应用增强内容失败，请重试。',
       });
     }
   }, [resumeId, state.preview]);

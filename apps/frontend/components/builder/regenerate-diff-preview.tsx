@@ -109,7 +109,10 @@ export const RegenerateDiffPreview: React.FC<RegenerateDiffPreviewProps> = ({
       return t('builder.regenerate.errors.networkError');
     }
 
-    if (/resume content changed|uniquely matched|please regenerate/i.test(value)) {
+    if (
+      /resume content changed|uniquely matched|please regenerate/i.test(value) ||
+      /简历内容.*变化|无法唯一匹配|重新生成后再试/.test(value)
+    ) {
       return t('builder.regenerate.errors.resumeChanged');
     }
 

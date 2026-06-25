@@ -108,19 +108,19 @@ async function asJson<T>(res: Response, fallback: string): Promise<T> {
 // List all applications grouped by status column.
 export async function listApplications(): Promise<ApplicationListResponse> {
   const res = await apiFetch('/applications', { credentials: 'include' });
-  return asJson<ApplicationListResponse>(res, 'Failed to load applications');
+  return asJson<ApplicationListResponse>(res, '加载申请列表失败');
 }
 
 // Manually add a card from a pasted job description.
 export async function createApplication(payload: ManualApplicationCreate): Promise<Application> {
   const res = await apiPost('/applications', payload);
-  return asJson<Application>(res, 'Failed to create application');
+  return asJson<Application>(res, '创建申请失败');
 }
 
 // Fetch a card with its embedded JD + applied resume (for the modal).
 export async function getApplicationDetail(id: string): Promise<ApplicationDetail> {
   const res = await apiFetch(`/applications/${id}`, { credentials: 'include' });
-  return asJson<ApplicationDetail>(res, 'Failed to load application');
+  return asJson<ApplicationDetail>(res, '加载申请详情失败');
 }
 
 // Update one card (status/position/notes/company/role/applied_at).
@@ -129,7 +129,7 @@ export async function updateApplication(
   payload: ApplicationUpdate
 ): Promise<Application> {
   const res = await apiPatch(`/applications/${id}`, payload);
-  return asJson<Application>(res, 'Failed to update application');
+  return asJson<Application>(res, '更新申请失败');
 }
 
 // Move many cards to one column.
@@ -141,13 +141,13 @@ export async function bulkUpdateStatus(
     application_ids: applicationIds,
     status,
   });
-  return asJson<ApplicationActionResponse>(res, 'Failed to move applications');
+  return asJson<ApplicationActionResponse>(res, '移动申请失败');
 }
 
 // Delete one card.
 export async function deleteApplication(id: string): Promise<void> {
   const res = await apiDelete(`/applications/${id}`);
-  await asJson<ApplicationActionResponse>(res, 'Failed to delete application');
+  await asJson<ApplicationActionResponse>(res, '删除申请失败');
 }
 
 // Delete many cards.
@@ -155,5 +155,5 @@ export async function bulkDeleteApplications(
   applicationIds: string[]
 ): Promise<ApplicationActionResponse> {
   const res = await apiPost('/applications/bulk-delete', { application_ids: applicationIds });
-  return asJson<ApplicationActionResponse>(res, 'Failed to delete applications');
+  return asJson<ApplicationActionResponse>(res, '批量删除申请失败');
 }
