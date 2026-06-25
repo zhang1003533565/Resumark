@@ -192,6 +192,41 @@ def _fallback_enrichment_analysis(processed_data: dict) -> AnalysisResponse:
     return AnalysisResponse(items_to_enrich=items, questions=questions, analysis_summary=summary)
 
 
+def _fallback_enhanced_description(
+    *,
+    item_id: str,
+    item: dict,
+    answers: list[AnswerInput],
+) -> EnhancedDescription:
+    """Build local enhancement bullets from the user's answers."""
+    current_desc = _normalize_description(item.get("current_description"))
+    answer_text = "；".join(
+        answer.answer.strip() for answer in answers if answer.answer.strip()
+    )
+    item_type = item.get("item_type", "experience")
+    title = str(item.get("title") or "")
+    label = title or ("项目经历" if item_type == "project" else "工作经历")
+
+    if answer_text:
+        clipped_answer = answer_text[:240].rstrip("。.;；")
+        if item_type == "project":
+            fallback_bullets = [f"围绕「{label}」补充项目目标、个人贡献与结果：{clipped_answer}。"]
+        else:
+            fallback_bullets = [f"围绕「{label}」补充职责、行动与成果：{clipped_answer}。"]
+    elif item_type == "project":
+        fallback_bullets = ["补充项目目标、个人贡献、技术方案与最终效果。"]
+    else:
+        fallback_bullets = ["补充核心职责、关键行动、协作范围与可量化成果。"]
+
+    return EnhancedDescription(
+        item_id=item_id,
+        item_type=item_type,
+        title=title,
+        original_description=current_desc,
+        enhanced_description=fallback_bullets,
+    )
+
+
 @router.post("/analyze/{resume_id}", response_model=AnalysisResponse)
 async def analyze_resume(resume_id: str) -> AnalysisResponse:
     """Analyze a resume to identify items that need enrichment.
@@ -325,22 +360,16 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
             )
         except asyncio.TimeoutError:
             logger.error("Resume re-analysis timed out for resume %s", request.resume_id)
-            raise HTTPException(
-                status_code=504,
-                detail="简历分析超时。请尝试缩短简历内容，或切换到响应更快的模型。",
-            )
+            fallback_analysis = _fallback_enrichment_analysis(processed_data)
+            analysis_result = fallback_analysis.model_dump()
         except ValueError as e:
             logger.error("Resume re-analysis failed (content): %s", e)
-            raise HTTPException(
-                status_code=422,
-                detail="AI 返回的内容无法读取。请重试或切换模型。",
-            )
+            fallback_analysis = _fallback_enrichment_analysis(processed_data)
+            analysis_result = fallback_analysis.model_dump()
         except Exception as e:
             logger.error("Failed to re-analyze resume: %s", e)
-            raise HTTPException(
-                status_code=500,
-                detail="无法处理增强内容。请重试。",
-            )
+            fallback_analysis = _fallback_enrichment_analysis(processed_data)
+            analysis_result = fallback_analysis.model_dump()
 
         question_to_item: dict[str, str] = {}
         for q in analysis_result.get("questions", []):
@@ -353,9 +382,13 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
             item_details[item_id] = item
 
         for answer in request.answers:
-            item_id = question_to_item.get(answer.question_id, "")
-            if item_id:
+            item_id = answer.item_id or question_to_item.get(answer.question_id, "")
+            if item_id and item_id in item_details:
                 answers_by_item.setdefault(item_id, []).append(answer)
+
+        if not answers_by_item and request.answers and item_details:
+            first_item_id = next(iter(item_details))
+            answers_by_item[first_item_id] = list(request.answers)
 
     # Generate enhanced descriptions for each item
     enhancements: list[EnhancedDescription] = []
@@ -408,6 +441,16 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
                 additional_bullets = []
             additional_bullets = [str(b) for b in additional_bullets if b]
 
+            if not additional_bullets:
+                enhancements.append(
+                    _fallback_enhanced_description(
+                        item_id=item_id,
+                        item=item,
+                        answers=answers,
+                    )
+                )
+                continue
+
             enhancements.append(
                 EnhancedDescription(
                     item_id=item_id,
@@ -419,7 +462,13 @@ async def generate_enhancements(request: EnhanceRequest) -> EnhancementPreview:
             )
         except Exception as e:
             logger.warning(f"Failed to enhance item {item_id}: {e}")
-            # Continue with other items
+            enhancements.append(
+                _fallback_enhanced_description(
+                    item_id=item_id,
+                    item=item,
+                    answers=answers,
+                )
+            )
 
     return EnhancementPreview(enhancements=enhancements)
 
